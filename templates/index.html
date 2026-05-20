@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folder Mover</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0d0f12;
+    --surface:   #141720;
+    --border:    #252a35;
+    --text:      #c8d0e0;
+    --muted:     #5a6275;
+    --accent:    #4f8ef7;
+    --green:     #3ecf76;
+    --orange:    #f59e0b;
+    --red:       #ef4444;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.5px;
+  }
+  .logo span { color: var(--accent); }
+
+  .header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: #fff; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #6ba3ff; border-color: #6ba3ff; }
+
+  .btn-danger {
+    background: transparent;
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .btn-danger:hover { background: var(--red); color: #fff; }
+
+  .btn-success {
+    background: var(--green);
+    border-color: var(--green);
+    color: #0d0f12;
+    font-weight: 600;
+  }
+  .btn-success:hover { background: #5de08f; }
+
+  /* ── Main layout ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+  }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .stat strong { color: var(--text); font-weight: 600; }
+  .stat-sep { color: var(--border); }
+
+  /* ── Empty / loading states ── */
+  .state-empty {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--muted);
+  }
+  .state-empty .icon { font-size: 40px; margin-bottom: 16px; }
+  .state-empty p { font-size: 15px; }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Item cards ── */
+  .items-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .item-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .item-card.selected { border-color: var(--accent); }
+  .item-card.skipped { opacity: 0.45; }
+  .item-card.done { border-color: var(--green); }
+  .item-card.error { border-color: var(--red); }
+
+  .item-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .item-header:hover { background: rgba(255,255,255,0.02); }
+
+  .item-checkbox {
+    flex-shrink: 0;
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .item-card.selected .item-checkbox {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .item-checkbox svg { display: none; }
+  .item-card.selected .item-checkbox svg { display: block; }
+
+  .item-type-badge {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-movie  { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-series { background: rgba(62,207,118,0.15); color: var(--green); }
+  .badge-unknown { background: rgba(245,158,11,0.15); color: var(--orange); }
+
+  .item-name {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .item-size {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .confidence-dot {
+    flex-shrink: 0;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+  }
+  .conf-high   { background: var(--green); }
+  .conf-medium { background: var(--orange); }
+  .conf-low    { background: var(--red); }
+
+  /* ── Item body (expanded) ── */
+  .item-body {
+    border-top: 1px solid var(--border);
+    padding: 14px 16px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .item-card.expanded .item-body { display: flex; }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px;
+    align-items: start;
+  }
+  .field-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-top: 7px;
+  }
+  .field-value {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    word-break: break-all;
+    padding-top: 7px;
+  }
+  .field-value.source { color: var(--text); }
+
+  .arrow-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .arrow-row svg { color: var(--muted); flex-shrink: 0; }
+
+  /* editable fields */
+  .edit-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .edit-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .edit-label {
+    font-size: 11px;
+    color: var(--muted);
+    width: 70px;
+    flex-shrink: 0;
+  }
+  input[type="text"], input[type="number"], select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  select:focus { border-color: var(--accent); }
+  select option { background: var(--surface); }
+  input[type="number"] { width: 80px; }
+
+  .dest-preview {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    padding: 6px 10px;
+    background: rgba(79,142,247,0.07);
+    border-radius: 5px;
+    border: 1px solid rgba(79,142,247,0.2);
+    word-break: break-all;
+    margin-top: 2px;
+  }
+  .dest-preview.warn {
+    color: var(--orange);
+    background: rgba(245,158,11,0.07);
+    border-color: rgba(245,158,11,0.25);
+  }
+
+  .wrapper-note {
+    font-size: 11px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ── Library match badges ── */
+  .match-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
+  .match-auto { background: rgba(62,207,118,0.15); color: var(--green); border: 1px solid rgba(62,207,118,0.3); }
+  .match-hint { background: rgba(245,158,11,0.15); color: var(--orange); border: 1px solid rgba(245,158,11,0.3); }
+  .match-new  { background: rgba(79,142,247,0.12); color: var(--accent); border: 1px solid rgba(79,142,247,0.25); }
+
+  .season-badge {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .season-exists { background: rgba(62,207,118,0.12); color: var(--green); }
+  .season-new    { background: rgba(245,158,11,0.10); color: var(--orange); }
+
+  .item-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Bottom action bar ── */
+  .action-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+  .action-bar-info {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .action-bar-info strong { color: var(--text); }
+
+  /* ── Toast ── */
+  #toast-container {
+    position: fixed;
+    top: 68px; right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 200;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 16px;
+    font-size: 13px;
+    max-width: 340px;
+    animation: slideIn 0.2s ease;
+  }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error   { border-color: var(--red);   color: var(--red);   }
+  .toast.info    { border-color: var(--accent); color: var(--accent); }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ── Progress overlay ── */
+  #progress-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(13,15,18,0.88);
+    z-index: 300;
+    align-items: center;
+    justify-content: center;
+  }
+  #progress-overlay.active { display: flex; }
+  .progress-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 32px;
+    min-width: 480px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .prog-header { display: flex; align-items: center; gap: 12px; }
+  .prog-header h3 { font-size: 15px; font-weight: 600; color: #fff; flex: 1; }
+  .prog-items-count { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .prog-bar-wrap { display: flex; flex-direction: column; gap: 5px; }
+  .prog-bar-label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--muted); font-family: var(--mono);
+  }
+  .prog-bar-label span { color: var(--text); }
+  .prog-bar-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .prog-bar-fill {
+    height: 100%; background: var(--accent); border-radius: 3px;
+    transition: width 0.2s linear; width: 0%;
+  }
+  .prog-bar-fill.done { background: var(--green); }
+  .prog-file-bar .prog-bar-fill { background: #6ba3ff; opacity: 0.6; }
+  .prog-stats { display: flex; gap: 20px; flex-wrap: wrap; }
+  .prog-stat { display: flex; flex-direction: column; gap: 2px; }
+  .prog-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .prog-stat-value { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
+  .prog-stat-value.accent { color: var(--accent); }
+  .prog-stat-value.green  { color: var(--green); }
+  .prog-current-file { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prog-current-item { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prog-errors { font-size: 12px; color: var(--red); font-family: var(--mono); max-height: 80px; overflow-y: auto; }
+
+  /* ── Select all ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .toolbar-label { font-size: 12px; color: var(--muted); }
+
+  /* responsive */
+  @media (max-width: 600px) {
+    .field-row { grid-template-columns: 1fr; }
+    .field-label { padding-top: 0; }
+  }
+
+  /* ── Tabs ── */
+  .tab-nav {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    padding: 8px 18px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-badge {
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--border);
+    color: var(--muted);
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+  .tab-btn.active .tab-badge { background: rgba(79,142,247,0.2); color: var(--accent); }
+
+  /* ── History table ── */
+  .hist-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .hist-filter {
+    display: flex;
+    gap: 6px;
+  }
+  .hist-filter-btn {
+    padding: 4px 12px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .hist-filter-btn:hover { color: var(--text); }
+  .hist-filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,0.08); }
+
+  .hist-search {
+    flex: 1;
+    min-width: 180px;
+    max-width: 300px;
+  }
+
+  .hist-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  thead th {
+    background: var(--surface);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody td {
+    padding: 9px 14px;
+    vertical-align: middle;
+  }
+  .td-name {
+    font-family: var(--mono);
+    color: var(--text);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-dest {
+    font-family: var(--mono);
+    color: var(--muted);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  .td-ts {
+    color: var(--muted);
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .td-type { white-space: nowrap; }
+  .td-status { white-space: nowrap; }
+  .ok-dot   { color: var(--green); font-weight: 700; }
+  .err-dot  { color: var(--red);   font-weight: 700; }
+  .hist-empty {
+    text-align: center;
+    padding: 50px 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">folder<span>.</span>mover</div>
+  <div class="header-actions">
+    <div id="scan-status" style="font-size:12px;color:var(--muted)"></div>
+    <button class="btn btn-primary" id="btn-scan" onclick="doScan()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Scan Downloads
+    </button>
+  </div>
+</header>
+
+<main>
+  <!-- Tab navigation -->
+  <div class="tab-nav">
+    <button class="tab-btn active" id="tab-btn-scan" onclick="switchTab('scan')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Downloads
+      <span class="tab-badge" id="tab-badge-scan">0</span>
+    </button>
+    <button class="tab-btn" id="tab-btn-history" onclick="switchTab('history')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Historie
+      <span class="tab-badge" id="tab-badge-history">—</span>
+    </button>
+  </div>
+
+  <!-- Downloads tab -->
+  <div id="tab-scan">
+    <div id="state-empty" class="state-empty">
+      <div class="icon">📂</div>
+      <p>Scan starten um Downloads zu erkennen.</p>
+    </div>
+
+    <div id="results-section" style="display:none">
+      <div class="toolbar">
+        <button class="btn" onclick="selectAll(true)" style="font-size:12px;padding:5px 10px">Alle wählen</button>
+        <button class="btn" onclick="selectAll(false)" style="font-size:12px;padding:5px 10px">Keine</button>
+        <span class="toolbar-label" id="toolbar-label"></span>
+      </div>
+      <div class="stats-bar" id="stats-bar"></div>
+      <div class="items-list" id="items-list"></div>
+    </div>
+  </div>
+
+  <!-- History tab -->
+  <div id="tab-history" style="display:none">
+    <div class="hist-toolbar">
+      <div class="hist-filter">
+        <button class="hist-filter-btn active" onclick="setHistFilter('all', this)">Alle</button>
+        <button class="hist-filter-btn" onclick="setHistFilter('movie', this)">🎬 Filme</button>
+        <button class="hist-filter-btn" onclick="setHistFilter('series', this)">📺 Serien</button>
+        <button class="hist-filter-btn" onclick="setHistFilter('error', this)">⚠ Fehler</button>
+      </div>
+      <input type="text" class="hist-search" placeholder="Suchen…" oninput="renderHistory()" id="hist-search">
+      <button class="btn" onclick="loadHistory()" style="margin-left:auto;font-size:12px;padding:5px 10px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+        Aktualisieren
+      </button>
+    </div>
+    <div class="hist-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Zeitpunkt</th>
+            <th>Release</th>
+            <th>Typ</th>
+            <th>Ziel</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="hist-tbody">
+          <tr><td colspan="5" class="hist-empty">Noch keine Einträge.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div class="action-bar" id="action-bar" style="display:none">
+  <div class="action-bar-info" id="action-info"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn" onclick="doScan()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+      Neu scannen
+    </button>
+    <button class="btn btn-success" id="btn-move" onclick="confirmMove()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+      Verschieben
+    </button>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<div id="progress-overlay">
+  <div class="progress-box">
+    <div class="prog-header">
+      <span class="spinner"></span>
+      <h3 id="prog-title">Verschiebe Dateien…</h3>
+      <span class="prog-items-count" id="prog-items-count"></span>
+    </div>
+
+    <!-- Overall progress -->
+    <div class="prog-bar-wrap">
+      <div class="prog-bar-label">
+        <span>Gesamt</span>
+        <span id="prog-overall-pct">0%</span>
+      </div>
+      <div class="prog-bar-track">
+        <div class="prog-bar-fill" id="prog-overall-bar"></div>
+      </div>
+    </div>
+
+    <!-- Current file progress -->
+    <div class="prog-bar-wrap prog-file-bar">
+      <div class="prog-bar-label">
+        <span id="prog-current-item" class="prog-current-item">—</span>
+        <span id="prog-file-pct">0%</span>
+      </div>
+      <div class="prog-bar-track">
+        <div class="prog-bar-fill" id="prog-file-bar"></div>
+      </div>
+      <div class="prog-current-file" id="prog-current-file"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="prog-stats">
+      <div class="prog-stat">
+        <span class="prog-stat-label">Kopiert</span>
+        <span class="prog-stat-value accent" id="prog-copied">—</span>
+      </div>
+      <div class="prog-stat">
+        <span class="prog-stat-label">Gesamt</span>
+        <span class="prog-stat-value" id="prog-total">—</span>
+      </div>
+      <div class="prog-stat">
+        <span class="prog-stat-label">Speed</span>
+        <span class="prog-stat-value accent" id="prog-speed">—</span>
+      </div>
+      <div class="prog-stat">
+        <span class="prog-stat-label">ETA</span>
+        <span class="prog-stat-value" id="prog-eta">—</span>
+      </div>
+    </div>
+
+    <div class="prog-errors" id="prog-errors" style="display:none"></div>
+
+    <button class="btn btn-primary" id="prog-close-btn" onclick="closeProgressOverlay()"
+      style="display:none;width:100%;justify-content:center;margin-top:4px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      Schliessen
+    </button>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let items = [];          // raw data from server
+let cardState = {};      // per-item: { selected, expanded, type, seriesName, season, destDir }
+
+// ── Scan ──────────────────────────────────────────────────────────────────────
+async function doScan() {
+  const btn = document.getElementById('btn-scan');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Scanne…';
+  document.getElementById('scan-status').textContent = '';
+  document.getElementById('state-empty').style.display = 'none';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('action-bar').style.display = 'none';
+
+  try {
+    const r = await fetch('/api/scan', { method: 'POST' });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Scan fehlgeschlagen');
+
+    items = data.items;
+    buildUI();
+    document.getElementById('tab-badge-scan').textContent = items.length;
+    toast(`${items.length} Einträge gefunden`, 'info');
+  } catch (e) {
+    toast('Scan Fehler: ' + e.message, 'error');
+    document.getElementById('state-empty').style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
+  }
+}
+
+// ── Build UI ──────────────────────────────────────────────────────────────────
+function buildUI() {
+  cardState = {};
+  items.forEach(item => {
+    const s = item.suggestion;
+    cardState[item.id] = {
+      selected: !item.dest_exists,  // don't pre-select if dest already exists
+      expanded: s.confidence !== 'high' || s.match_auto === false,
+      type: s.type,
+      seriesName: s.series_name || '',        // display name (may have spaces)
+      seriesFolderName: _folderNameFromDest(s.dest_dir, s.type), // actual folder on NAS
+      season: s.season || 1,
+      destDir: s.dest_dir || '',              // authoritative from server
+      destExists: item.dest_exists,
+    };
+  });
+
+  renderAll();
+
+  document.getElementById('results-section').style.display = 'block';
+  document.getElementById('action-bar').style.display = 'flex';
+  updateActionBar();
+}
+
+function renderAll() {
+  renderStats();
+  renderItems();
+  updateActionBar();
+}
+
+function renderStats() {
+  const movies  = items.filter(i => i.suggestion.type === 'movie').length;
+  const series  = items.filter(i => i.suggestion.type === 'series').length;
+  const unknown = items.filter(i => i.suggestion.type === 'unknown').length;
+  const totalBytes = items.reduce((a, i) => a + (i.size_bytes || 0), 0);
+
+  document.getElementById('stats-bar').innerHTML = `
+    <div class="stat"><span>📦</span> <strong>${items.length}</strong> Einträge</div>
+    <div class="stat-sep">|</div>
+    <div class="stat"><span>🎬</span> <strong>${movies}</strong> Filme</div>
+    <div class="stat"><span>📺</span> <strong>${series}</strong> Serien</div>
+    ${unknown ? `<div class="stat"><span>❓</span> <strong>${unknown}</strong> Unbekannt</div>` : ''}
+    <div class="stat-sep">|</div>
+    <div class="stat"><span>💾</span> <strong>${fmtSize(totalBytes)}</strong></div>
+  `;
+}
+
+function renderItems() {
+  const list = document.getElementById('items-list');
+  list.innerHTML = '';
+  items.forEach(item => {
+    list.appendChild(buildCard(item));
+  });
+  updateToolbarLabel();
+}
+
+function buildCard(item) {
+  const id    = item.id;
+  const cs    = cardState[id];
+  const s     = item.suggestion;
+
+  const card = document.createElement('div');
+  card.className = `item-card ${cs.selected ? 'selected' : ''} ${cs.expanded ? 'expanded' : ''}`;
+  card.id = 'card-' + btoa(unescape(encodeURIComponent(id))).replace(/[^a-z0-9]/gi, '');
+
+  const badgeClass = { movie: 'badge-movie', series: 'badge-series', unknown: 'badge-unknown' }[cs.type] || 'badge-unknown';
+  const badgeLabel = { movie: 'Film', series: 'Serie', unknown: '?' }[cs.type] || '?';
+  const confClass  = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' }[s.confidence] || 'conf-low';
+
+  card.innerHTML = `
+    <div class="item-header" onclick="toggleCard('${escId(id)}', event)">
+      <div class="item-checkbox">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="item-type-badge ${badgeClass}">${badgeLabel}</div>
+      <div class="confidence-dot ${confClass}" title="Erkennungssicherheit: ${s.confidence}"></div>
+      <div class="item-name" title="${escHtml(item.release_name)}">${escHtml(item.release_name)}</div>
+      <div class="item-size">${fmtSize(item.size_bytes)}</div>
+    </div>
+
+    <div class="item-body">
+      ${buildBody(item, cs)}
+    </div>
+  `;
+
+  return card;
+}
+
+function buildBody(item, cs) {
+  const s = item.suggestion;
+  let html = '';
+
+  // Source info
+  html += `
+    <div class="field-row">
+      <div class="field-label">Quelle</div>
+      <div class="field-value source">${escHtml(item.source_top)}</div>
+    </div>`;
+
+  if (item.is_wrapper) {
+    html += `
+      <div class="field-row">
+        <div class="field-label"></div>
+        <div class="wrapper-note">↳ Wrapper erkannt, Release-Ordner: <strong>${escHtml(item.release_name)}</strong></div>
+      </div>`;
+  }
+
+  // Type selector
+  html += `
+    <div class="field-row">
+      <div class="field-label">Typ</div>
+      <div>
+        <select onchange="onTypeChange('${escId(item.id)}', this.value)" style="width:140px">
+          <option value="movie"   ${cs.type === 'movie'   ? 'selected' : ''}>🎬 Film</option>
+          <option value="series"  ${cs.type === 'series'  ? 'selected' : ''}>📺 Serie</option>
+          <option value="unknown" ${cs.type === 'unknown' ? 'selected' : ''}>❓ Unbekannt</option>
+        </select>
+      </div>
+    </div>`;
+
+  // Series-specific fields
+  if (cs.type === 'series') {
+    const knownSeries = s.known_series || [];
+    const matchAuto   = s.match_auto;
+    const matchScore  = s.match_score || 0;
+    const matchExisting = s.matched_existing;
+    const seasonExists  = s.season_exists;
+    const existingSeasons = s.existing_seasons || [];
+
+    // Match status badge
+    let matchBadge = '';
+    if (matchAuto && matchExisting) {
+      matchBadge = `<span class="match-badge match-auto" title="Automatisch gematcht (${Math.round(matchScore*100)}%)">✓ in Bibliothek</span>`;
+    } else if (matchExisting) {
+      matchBadge = `<span class="match-badge match-hint" title="Möglicher Treffer (${Math.round(matchScore*100)}%) — bitte prüfen">~ ${escHtml(matchExisting)}</span>`;
+    } else {
+      matchBadge = `<span class="match-badge match-new">+ Neu</span>`;
+    }
+
+    // Datalist for autocomplete
+    const dlId = 'dl-' + btoa(unescape(encodeURIComponent(item.id))).replace(/[^a-z0-9]/gi,'');
+    const options = knownSeries.map(n => `<option value="${escHtml(n)}">`).join('');
+
+    html += `
+      <datalist id="${dlId}">${options}</datalist>
+      <div class="field-row">
+        <div class="field-label">Serie</div>
+        <div class="edit-group">
+          <div class="edit-row" style="gap:8px;align-items:center">
+            <input type="text" list="${dlId}" value="${escHtml(cs.seriesName)}" placeholder="Serienname"
+              style="flex:1"
+              oninput="onSeriesName('${escId(item.id)}', this.value)">
+            ${matchBadge}
+          </div>
+          <div class="edit-row">
+            <span class="edit-label">Staffel</span>
+            <input type="number" value="${cs.season}" min="1" max="99" style="width:72px"
+              oninput="onSeason('${escId(item.id)}', this.value)">
+            ${seasonExists
+              ? `<span class="season-badge season-exists" title="Staffel existiert bereits — Episoden werden hinzugefügt">S${String(cs.season).padStart(2,'0')} vorhanden</span>`
+              : existingSeasons.length > 0
+                ? `<span class="season-badge season-new">Neue Staffel · Vorhanden: ${existingSeasons.join(', ')}</span>`
+                : ''}
+          </div>
+        </div>
+      </div>`;
+
+    if (s.video_files && s.video_files.length > 0) {
+      const fileList = s.video_files.map(f => `<div>${escHtml(Path_basename(f))}</div>`).join('');
+      html += `
+        <div class="field-row">
+          <div class="field-label">Dateien</div>
+          <div class="field-value">${fileList}</div>
+        </div>`;
+    }
+  }
+
+  // Destination preview
+  const dest = buildDestPreview(item.id);
+  const isSeries = cs.type === 'series';
+  // For series: season folder existing is OK (adding episodes), only warn if dest is a file conflict
+  const warnClass = (!isSeries && item.dest_exists) ? 'warn' : '';
+  const warnNote  = (!isSeries && item.dest_exists) ? ' ⚠ Ziel existiert bereits' : '';
+  const infoNote  = (isSeries && item.suggestion.season_exists) ? ' · Staffel vorhanden, Episoden werden ergänzt' : '';
+  html += `
+    <div class="field-row">
+      <div class="field-label">Ziel</div>
+      <div>
+        <div class="dest-preview ${warnClass}" id="dest-preview-${escId(item.id)}">${escHtml(dest)}${warnNote}${infoNote}</div>
+      </div>
+    </div>`;
+
+  // Actions
+  html += `
+    <div class="item-actions">
+      <button class="btn btn-danger" onclick="deleteCard('${escId(item.id)}', event)" title="Aus Download-Verzeichnis löschen">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        Löschen
+      </button>
+      <button class="btn" onclick="skipCard('${escId(item.id)}', event)">Überspringen</button>
+    </div>`;
+
+  return html;
+}
+
+function Path_basename(p) {
+  return p.replace(/\\/g, '/').split('/').pop();
+}
+
+function buildDestPreview(id) {
+  const cs   = cardState[id];
+  return cs.destDir || '—';
+}
+
+// ── Card interactions ─────────────────────────────────────────────────────────
+function toggleCard(id, event) {
+  // If the click came from the checkbox, let the dedicated handler deal with it
+  if (event && event.target.closest('.item-checkbox')) return;
+
+  const cs = cardState[id];
+  cs.expanded = !cs.expanded;
+  const card = getCard(id);
+  card.classList.toggle('expanded', cs.expanded);
+}
+
+function getCard(id) {
+  return document.getElementById('card-' + btoa(unescape(encodeURIComponent(id))).replace(/[^a-z0-9]/gi, ''));
+}
+
+// Dedicated checkbox toggle — handles select/deselect and skipped state
+document.addEventListener('click', function(e) {
+  const checkbox = e.target.closest('.item-checkbox');
+  if (!checkbox) return;
+
+  e.stopPropagation();
+  const card = checkbox.closest('.item-card');
+  const id = getIdFromCard(card);
+  if (!id) return;
+
+  // Don't toggle done cards
+  if (card.classList.contains('done')) return;
+
+  cardState[id].selected = !cardState[id].selected;
+  card.classList.toggle('selected', cardState[id].selected);
+  // Remove skipped when re-activating
+  if (cardState[id].selected) {
+    card.classList.remove('skipped');
+  } else {
+    card.classList.add('skipped');
+  }
+  updateActionBar();
+  updateToolbarLabel();
+});
+
+function getIdFromCard(card) {
+  for (const id of Object.keys(cardState)) {
+    const encoded = btoa(unescape(encodeURIComponent(id))).replace(/[^a-z0-9]/gi, '');
+    if (card.id === 'card-' + encoded) return id;
+  }
+  return null;
+}
+
+function skipCard(id, e) {
+  e && e.stopPropagation();
+  cardState[id].selected = false;
+  const card = getCard(id);
+  card.classList.remove('selected');
+  card.classList.add('skipped');
+  updateActionBar();
+  updateToolbarLabel();
+}
+
+async function deleteCard(id, e) {
+  e && e.stopPropagation();
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+
+  const confirmed = window.confirm(
+    `"${item.release_name}" wirklich löschen?\n\nQuelle: ${item.source_top}\n\nDies kann nicht rückgängig gemacht werden.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const r = await fetch('/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_top: item.source_top }),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Fehler');
+
+    // Remove card from UI
+    const card = getCard(id);
+    card.style.transition = 'opacity 0.3s, max-height 0.3s';
+    card.style.opacity = '0';
+    card.style.overflow = 'hidden';
+    card.style.maxHeight = card.offsetHeight + 'px';
+    setTimeout(() => { card.style.maxHeight = '0'; card.style.marginBottom = '0'; }, 300);
+    setTimeout(() => { card.remove(); }, 600);
+
+    items = items.filter(i => i.id !== id);
+    delete cardState[id];
+    document.getElementById('tab-badge-scan').textContent = items.length;
+    updateActionBar();
+    updateToolbarLabel();
+    toast(`"${item.release_name}" gelöscht`, 'info');
+  } catch (err) {
+    toast('Löschen fehlgeschlagen: ' + err.message, 'error');
+  }
+}
+
+function onTypeChange(id, newType) {
+  cardState[id].type = newType;
+  rebuildDestDir(id);
+  // Re-render the body
+  const item = items.find(i => i.id === id);
+  const card = getCard(id);
+  const body = card.querySelector('.item-body');
+  body.innerHTML = buildBody(item, cardState[id]);
+  updateDestPreview(id);
+}
+
+function onSeriesName(id, val) {
+  cardState[id].seriesName = val;
+  cardState[id].seriesFolderName = val;  // user typed → use as-is for path
+  rebuildDestDir(id);
+  updateDestPreview(id);
+}
+
+function onSeason(id, val) {
+  cardState[id].season = parseInt(val) || 1;
+  rebuildDestDir(id);
+  updateDestPreview(id);
+}
+
+function rebuildDestDir(id) {
+  const cs   = cardState[id];
+  const item = items.find(i => i.id === id);
+  const s    = item.suggestion;
+
+  if (cs.type === 'series') {
+    // Use seriesFolderName (exact NAS folder name) not seriesName (display name)
+    const name   = cs.seriesFolderName || cs.seriesName || 'Unbekannte Serie';
+    const season = `S${String(cs.season || 1).padStart(2, '0')}`;
+    cs.destDir = (window._seriesDir || '/mnt/Serien') + '/' + name + '/' + season;
+  } else {
+    const title     = s.title || item.release_name;
+    const firstChar = getFirstChar(title);
+    const relName   = item.release_name;
+    cs.destDir = (window._moviesDir || '/mnt/Filme') + '/' + firstChar + '/' + relName;
+  }
+}
+
+// Extract the series folder name from the server-provided dest_dir
+// e.g. "/mnt/Serien/The.Boys/S05" → "The.Boys"
+function _folderNameFromDest(destDir, type) {
+  if (type !== 'series' || !destDir) return '';
+  const parts = destDir.replace(/\\/g, '/').split('/');
+  // dest_dir = seriesDir / folderName / seasonStr  → index -2
+  return parts.length >= 2 ? parts[parts.length - 2] : '';
+}
+
+function getFirstChar(name) {
+  const clean = name.replace(/^(The|Der|Die|Das|Ein|Eine)\s+/i, '');
+  const ch = clean[0] || '#';
+  return /[a-zA-Z]/.test(ch) ? ch.toUpperCase() : '#';
+}
+
+function updateDestPreview(id) {
+  const el = document.getElementById('dest-preview-' + id);
+  if (el) el.textContent = buildDestPreview(id);
+}
+
+// ── Select all / none ─────────────────────────────────────────────────────────
+function selectAll(state) {
+  items.forEach(item => {
+    cardState[item.id].selected = state;
+    const card = getCard(item.id);
+    card.classList.toggle('selected', state);
+    card.classList.toggle('skipped', !state);
+  });
+  updateActionBar();
+  updateToolbarLabel();
+}
+
+function updateToolbarLabel() {
+  const sel = Object.values(cardState).filter(c => c.selected).length;
+  document.getElementById('toolbar-label').textContent = `${sel} von ${items.length} ausgewählt`;
+}
+
+function updateActionBar() {
+  const selected = items.filter(i => cardState[i.id]?.selected);
+  const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
+  document.getElementById('action-info').innerHTML =
+    `<strong>${selected.length}</strong> ausgewählt · <strong>${fmtSize(totalBytes)}</strong>`;
+  document.getElementById('btn-move').disabled = selected.length === 0;
+}
+
+// ── Move ──────────────────────────────────────────────────────────────────────
+let _selectedForMove = [];
+
+async function confirmMove() {
+  const selected = items.filter(i => cardState[i.id]?.selected);
+  if (selected.length === 0) return;
+
+  const confirmed = window.confirm(
+    `${selected.length} Einträge verschieben?\n\nDies kann nicht rückgängig gemacht werden.`
+  );
+  if (!confirmed) return;
+
+  const moves = selected.map(item => {
+    const cs = cardState[item.id];
+    const s  = item.suggestion;
+    return {
+      source_release: item.source_release,
+      source_top:     item.source_top,
+      dest_dir:       cs.destDir,
+      type:           cs.type,
+      video_files:    cs.type === 'series' ? (s.video_files || []) : [],
+      is_loose_file:  item.is_loose_file || false,
+    };
+  });
+
+  _selectedForMove = selected;
+
+  // Start move on server (returns immediately, move runs in background)
+  try {
+    const r = await fetch('/api/move', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ moves }),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Fehler beim Starten');
+  } catch (e) {
+    toast('Fehler: ' + e.message, 'error');
+    return;
+  }
+
+  // Show overlay and open SSE stream
+  document.getElementById('progress-overlay').classList.add('active');
+  document.getElementById('prog-items-count').textContent = `0 / ${moves.length}`;
+  listenProgress(moves.length);
+}
+
+function listenProgress(totalItems) {
+  const es = new EventSource('/api/progress');
+
+  es.onmessage = (event) => {
+    const p = JSON.parse(event.data);
+    updateProgressUI(p, totalItems);
+
+    if (p.finished) {
+      es.close();
+      setTimeout(() => finishMove(p.results || []), 600);
+    }
+  };
+
+  es.onerror = () => {
+    es.close();
+    document.getElementById('progress-overlay').classList.remove('active');
+    toast('Verbindung zum Server verloren', 'error');
+  };
+}
+
+function updateProgressUI(p, totalItems) {
+  const overallPct = p.total_bytes > 0
+    ? Math.round((p.copied_bytes / p.total_bytes) * 100) : 0;
+  const filePct = p.current_item_total > 0
+    ? Math.round((p.current_item_bytes / p.current_item_total) * 100) : 0;
+
+  // Bars
+  const oBar = document.getElementById('prog-overall-bar');
+  oBar.style.width = overallPct + '%';
+  if (p.finished) oBar.classList.add('done');
+
+  document.getElementById('prog-file-bar').style.width = filePct + '%';
+  document.getElementById('prog-overall-pct').textContent = overallPct + '%';
+  document.getElementById('prog-file-pct').textContent = filePct + '%';
+
+  // Current item / file
+  if (p.current_item) {
+    document.getElementById('prog-current-item').textContent = p.current_item;
+  }
+  if (p.current_file) {
+    document.getElementById('prog-current-file').textContent = p.current_file;
+  }
+
+  // Items count
+  document.getElementById('prog-items-count').textContent =
+    `${p.done_items || 0} / ${totalItems}`;
+
+  // Stats
+  document.getElementById('prog-copied').textContent = fmtSize(p.copied_bytes);
+  document.getElementById('prog-total').textContent  = fmtSize(p.total_bytes);
+  document.getElementById('prog-speed').textContent  =
+    p.speed_bps > 0 ? fmtSize(Math.round(p.speed_bps)) + '/s' : '—';
+
+  if (p.eta_seconds != null && p.eta_seconds > 0) {
+    document.getElementById('prog-eta').textContent = fmtEta(p.eta_seconds);
+  } else if (p.finished) {
+    document.getElementById('prog-eta').textContent = 'Fertig';
+  } else {
+    document.getElementById('prog-eta').textContent = '—';
+  }
+
+  // Errors
+  if (p.errors && p.errors.length > 0) {
+    const el = document.getElementById('prog-errors');
+    el.style.display = 'block';
+    el.textContent = p.errors.join('\n');
+  }
+
+  if (p.finished) {
+    document.getElementById('prog-title').textContent = 'Abgeschlossen';
+    const spinner = document.querySelector('#progress-overlay .spinner');
+    if (spinner) spinner.style.display = 'none';
+    // Show close button
+    document.getElementById('prog-close-btn').style.display = 'inline-flex';
+  }
+}
+
+function closeProgressOverlay() {
+  document.getElementById('progress-overlay').classList.remove('active');
+  // Reset for next use
+  document.getElementById('prog-close-btn').style.display = 'none';
+  document.getElementById('prog-title').textContent = 'Verschiebe Dateien…';
+  document.querySelector('#progress-overlay .spinner').style.display = 'inline-block';
+  document.getElementById('prog-overall-bar').classList.remove('done');
+  document.getElementById('prog-errors').style.display = 'none';
+  // Auto-rescan so UI reflects current state
+  doScan();
+}
+
+function finishMove(results) {
+  // Overlay stays open — user clicks "Schliessen"
+
+  const ok     = results.filter(r => r.ok).length;
+  const failed = results.filter(r => !r.ok);
+
+  _selectedForMove.forEach((item, idx) => {
+    const res  = results[idx];
+    const card = getCard(item.id);
+    if (!card) return;
+    if (res && res.ok) {
+      card.classList.remove('selected', 'expanded');
+      card.classList.add('done');
+      cardState[item.id].selected = false;
+    } else {
+      card.classList.add('error');
+      if (res) toast(`Fehler: ${res.error}`, 'error');
+    }
+  });
+
+  if (ok > 0) toast(`${ok} Einträge erfolgreich verschoben`, 'success');
+  if (failed.length > 0) toast(`${failed.length} Fehler`, 'error');
+
+  updateActionBar();
+  updateToolbarLabel();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtSize(bytes) {
+  if (!bytes) return '—';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+function fmtEta(secs) {
+  if (secs < 60) return secs + 's';
+  if (secs < 3600) return Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
+  return Math.floor(secs / 3600) + 'h ' + Math.floor((secs % 3600) / 60) + 'm';
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function escId(s) {
+  // Encode for use as JS string argument in onclick
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function toast(msg, type = 'info', duration = 4000) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => { el.remove(); }, duration);
+}
+
+// Inject server-side config values for JS dest-dir building
+window._moviesDir = {{ config.movies_dir | tojson }};
+window._seriesDir = {{ config.series_dir | tojson }};
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+let _currentTab = 'scan';
+
+function switchTab(tab) {
+  _currentTab = tab;
+  document.getElementById('tab-scan').style.display    = tab === 'scan'    ? 'block' : 'none';
+  document.getElementById('tab-history').style.display = tab === 'history' ? 'block' : 'none';
+  document.getElementById('tab-btn-scan').classList.toggle('active',    tab === 'scan');
+  document.getElementById('tab-btn-history').classList.toggle('active', tab === 'history');
+  document.getElementById('action-bar').style.display  = tab === 'scan' && items.length > 0 ? 'flex' : 'none';
+  if (tab === 'history') loadHistory();
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+let _histEntries = [];
+let _histFilter  = 'all';
+
+async function loadHistory() {
+  try {
+    const r = await fetch('/api/history?limit=200');
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    _histEntries = data.entries;
+    document.getElementById('tab-badge-history').textContent = _histEntries.length;
+    renderHistory();
+  } catch (e) {
+    toast('Historie konnte nicht geladen werden: ' + e.message, 'error');
+  }
+}
+
+function setHistFilter(filter, btn) {
+  _histFilter = filter;
+  document.querySelectorAll('.hist-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHistory();
+}
+
+function renderHistory() {
+  const search = (document.getElementById('hist-search')?.value || '').toLowerCase();
+  const tbody  = document.getElementById('hist-tbody');
+
+  let entries = _histEntries;
+
+  // Filter
+  if (_histFilter === 'movie')  entries = entries.filter(e => e.type === 'movie');
+  if (_histFilter === 'series') entries = entries.filter(e => e.type === 'series');
+  if (_histFilter === 'error')  entries = entries.filter(e => !e.ok);
+
+  // Search
+  if (search) {
+    entries = entries.filter(e =>
+      (e.release_name || '').toLowerCase().includes(search) ||
+      (e.dest || '').toLowerCase().includes(search)
+    );
+  }
+
+  if (entries.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="hist-empty">Keine Einträge gefunden.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = entries.map(e => {
+    const ts      = fmtTimestamp(e.ts);
+    const name    = escHtml(e.release_name || '—');
+    const dest    = escHtml(e.dest || '—');
+    const typeLbl = { movie: '🎬 Film', series: '📺 Serie', unknown: '❓' }[e.type] || e.type;
+    const status  = e.ok
+      ? `<span class="ok-dot">✓</span>`
+      : `<span class="err-dot" title="${escHtml(e.error || '')}">✗ ${escHtml(e.error || 'Fehler')}</span>`;
+    return `
+      <tr>
+        <td class="td-ts">${ts}</td>
+        <td class="td-name" title="${name}">${name}</td>
+        <td class="td-type">${typeLbl}</td>
+        <td class="td-dest" title="${dest}">${dest}</td>
+        <td class="td-status">${status}</td>
+      </tr>`;
+  }).join('');
+}
+
+function fmtTimestamp(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch { return iso; }
+}
+
+// Refresh history badge after a successful move
+const _origFinishMove = finishMove;
+function finishMove(results) {
+  _origFinishMove(results);
+  // Update badge without switching tab
+  fetch('/api/history?limit=1').then(r => r.json()).then(data => {
+    if (data.ok) {
+      // Lazy: just reload count from full list next time history tab opens
+      const badge = document.getElementById('tab-badge-history');
+      if (badge.textContent !== '—') {
+        const ok = results.filter(r => r.ok).length;
+        const cur = parseInt(badge.textContent) || 0;
+        badge.textContent = cur + ok;
+      }
+    }
+  }).catch(() => {});
+}
+</script>
+
+</body>
+</html>

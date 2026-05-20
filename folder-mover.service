@@ -1,0 +1,21 @@
+[Unit]
+Description=Folder Mover - Download organizer web UI
+After=network.target
+
+[Service]
+Type=simple
+User=user
+Group=user
+WorkingDirectory=/opt/folder-mover
+ExecStart=/opt/folder-mover/venv/bin/python app.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Harden a bit
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

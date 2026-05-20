@@ -1,0 +1,16 @@
+# User config (contains password - never commit)
+config.yaml
+
+# Move history (personal data)
+history.jsonl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
