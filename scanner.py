@@ -347,12 +347,22 @@ def suggest_destination(
         folder_name = release_folder.name
         first_char  = _first_letter(classification.get("title") or folder_name)
         dest_base   = os.path.join(config["movies_dir"], first_char, folder_name)
+        title       = classification.get("title") or folder_name
+        year        = classification.get("year")
+
+        # Check for existing release of same title+year in the letter folder
+        duplicate_path = _find_movie_duplicate(
+            config["movies_dir"], first_char, title, year, folder_name
+        )
+
         return {
             "type": "movie",
-            "title": classification.get("title") or folder_name,
+            "title": title,
+            "year": year,
             "first_char": first_char,
             "dest_dir": dest_base,
             "confidence": classification["confidence"],
+            "duplicate_path": duplicate_path,   # existing NAS path or None
         }
 
     else:
@@ -371,6 +381,56 @@ def _first_letter(name: str) -> str:
     clean = ARTICLES.sub("", name)
     letter = clean[0].upper() if clean else "#"
     return letter if letter.isalpha() else "#"
+
+
+def _title_key(name: str) -> str:
+    """Normalize a folder/title for duplicate detection: strip group, quality, keep title+year."""
+    s = re.sub(r"[._\-]", " ", name)
+    # Remove everything from quality tag onward
+    s = RE_QUALITY.split(s)[0]
+    s = re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
+    return s
+
+
+def _find_movie_duplicate(
+    movies_dir: str, first_char: str, title: str, year: int | None, new_folder: str
+) -> str | None:
+    """
+    Look for an existing folder anywhere in movies_dir that matches
+    the same title+year but is a different release (different group).
+    Searches all letter subfolders to catch cases where old releases
+    were filed under a different letter (e.g. The → T vs M).
+    Returns the full path of the duplicate, or None.
+    """
+    movies_path = Path(movies_dir)
+    if not movies_path.exists():
+        return None
+
+    new_key = _title_key(new_folder)
+
+    try:
+        # Iterate all single-letter (and #) subdirectories
+        for letter_dir in sorted(movies_path.iterdir()):
+            if not letter_dir.is_dir():
+                continue
+            if len(letter_dir.name) > 2:  # skip non-letter-index folders
+                continue
+            for entry in letter_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                if entry.name == new_folder:
+                    continue  # exact same name → handled by dest_exists
+                existing_key = _title_key(entry.name)
+                if not existing_key or not new_key:
+                    continue
+                if year and str(year) not in entry.name:
+                    continue
+                score = _token_similarity(new_key, existing_key)
+                if score >= 0.85:
+                    return str(entry)
+    except PermissionError:
+        pass
+    return None
 
 
 def _find_videos(folder: Path, config: dict) -> list[Path]:

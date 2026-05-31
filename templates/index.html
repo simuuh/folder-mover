@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folder Mover</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23141720'/><path d='M6 10h8l2 3h10v12H6z' fill='none' stroke='%234f8ef7' stroke-width='2' stroke-linejoin='round'/><path d='M11 19l3 3 5-5' stroke='%233ecf76' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600&display=swap');
 
@@ -354,6 +355,26 @@
   .season-exists { background: rgba(62,207,118,0.12); color: var(--green); }
   .season-new    { background: rgba(245,158,11,0.10); color: var(--orange); }
 
+  .duplicate-note {
+    font-size: 11px;
+    color: var(--orange);
+    padding: 6px 10px;
+    background: rgba(245,158,11,0.07);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .duplicate-note code {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+
   .item-actions {
     display: flex;
     gap: 8px;
@@ -614,6 +635,9 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       Scan Downloads
     </button>
+    <a href="/logout" class="btn" title="Abmelden" style="padding:7px 10px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </a>
   </div>
 </header>
 
@@ -699,6 +723,17 @@
 </div>
 
 <div id="toast-container"></div>
+
+<div id="confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,15,18,0.88);z-index:250;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 32px;min-width:340px;max-width:90vw;display:flex;flex-direction:column;gap:18px;">
+    <h3 id="confirm-title" style="font-size:15px;font-weight:600;color:#fff"></h3>
+    <p id="confirm-body" style="font-size:13px;color:var(--muted);line-height:1.6"></p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn" onclick="confirmResolve(false)">Abbrechen</button>
+      <button class="btn btn-primary" id="confirm-ok-btn" onclick="confirmResolve(true)">Bestätigen</button>
+    </div>
+  </div>
+</div>
 
 <div id="progress-overlay">
   <div class="progress-box">
@@ -800,7 +835,7 @@ function buildUI() {
   items.forEach(item => {
     const s = item.suggestion;
     cardState[item.id] = {
-      selected: !item.dest_exists,  // don't pre-select if dest already exists
+      selected: !item.dest_exists && !item.suggestion.duplicate_path,  // deselect if dest exists or duplicate found
       expanded: s.confidence !== 'high' || s.match_auto === false,
       type: s.type,
       seriesName: s.series_name || '',        // display name (may have spaces)
@@ -986,6 +1021,19 @@ function buildBody(item, cs) {
       </div>
     </div>`;
 
+  // Duplicate warning for movies
+  if (cs.type === 'movie' && s.duplicate_path) {
+    const dupName = s.duplicate_path.split('/').pop();
+    html += `
+      <div class="duplicate-note">
+        <span>⚠ Anderes Release bereits vorhanden: <code>${escHtml(dupName)}</code></span>
+        <button class="btn" style="font-size:11px;padding:3px 10px;flex-shrink:0"
+          onclick="replaceNas('${escId(item.id)}', '${escId(s.duplicate_path)}', event)">
+          Altes ersetzen
+        </button>
+      </div>`;
+  }
+
   // Actions
   html += `
     <div class="item-actions">
@@ -1071,8 +1119,10 @@ async function deleteCard(id, e) {
   const item = items.find(i => i.id === id);
   if (!item) return;
 
-  const confirmed = window.confirm(
-    `"${item.release_name}" wirklich löschen?\n\nQuelle: ${item.source_top}\n\nDies kann nicht rückgängig gemacht werden.`
+  const confirmed = await showConfirm(
+    `"${item.release_name}" löschen?`,
+    `Quelle: ${item.source_top}\n\nDies kann nicht rückgängig gemacht werden.`,
+    'Löschen'
   );
   if (!confirmed) return;
 
@@ -1192,19 +1242,73 @@ function updateActionBar() {
   document.getElementById('btn-move').disabled = selected.length === 0;
 }
 
-// ── Move ──────────────────────────────────────────────────────────────────────
+// ── Native confirm modal ──────────────────────────────────────────────────────
+let _confirmResolve = null;
+
+function showConfirm(title, body, okLabel = 'Bestätigen') {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-body').textContent  = body;
+  document.getElementById('confirm-ok-btn').textContent = okLabel;
+  const overlay = document.getElementById('confirm-overlay');
+  overlay.style.display = 'flex';
+  return new Promise(resolve => { _confirmResolve = resolve; });
+}
+
+function confirmResolve(result) {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
 let _selectedForMove = [];
 
-async function confirmMove() {
-  const selected = items.filter(i => cardState[i.id]?.selected);
-  if (selected.length === 0) return;
+async function replaceNas(itemId, duplicatePath, e) {
+  e && e.stopPropagation();
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
 
-  const confirmed = window.confirm(
-    `${selected.length} Einträge verschieben?\n\nDies kann nicht rückgängig gemacht werden.`
+  const dupName = duplicatePath.split('/').pop();
+  const confirmed = await showConfirm(
+    'Altes Release ersetzen?',
+    `Löscht:\n${dupName}\n\nVerschiebt dann:\n${item.release_name}`,
+    'Ersetzen'
   );
   if (!confirmed) return;
 
-  const moves = selected.map(item => {
+  // 1. Delete old NAS release
+  try {
+    const r = await fetch('/api/delete-nas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: duplicatePath }),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+    toast(`"${dupName}" gelöscht`, 'info');
+  } catch (err) {
+    toast('Löschen fehlgeschlagen: ' + err.message, 'error');
+    return;
+  }
+
+  // 2. Select only this item and move without second confirm
+  Object.keys(cardState).forEach(id => { cardState[id].selected = id === itemId; });
+  updateActionBar();
+  await confirmMove(true, duplicatePath);
+}
+
+async function confirmMove(skipConfirm = false, replacedPath = null) {
+  const selected = items.filter(i => cardState[i.id]?.selected);
+  if (selected.length === 0) return;
+
+  if (!skipConfirm) {
+    const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
+    const confirmed = await showConfirm(
+      `${selected.length} Einträge verschieben?`,
+      `${selected.length} Einträge · ${fmtSize(totalBytes)}\n\nDies kann nicht rückgängig gemacht werden.`,
+      'Verschieben'
+    );
+    if (!confirmed) return;
+  }
+
+  const moves = selected.map((item, idx) => {
     const cs = cardState[item.id];
     const s  = item.suggestion;
     return {
@@ -1214,6 +1318,8 @@ async function confirmMove() {
       type:           cs.type,
       video_files:    cs.type === 'series' ? (s.video_files || []) : [],
       is_loose_file:  item.is_loose_file || false,
+      // Only set on the single item being replaced
+      replaced_path:  (replacedPath && selected.length === 1) ? replacedPath : null,
     };
   });
 
@@ -1463,10 +1569,13 @@ function renderHistory() {
     const status  = e.ok
       ? `<span class="ok-dot">✓</span>`
       : `<span class="err-dot" title="${escHtml(e.error || '')}">✗ ${escHtml(e.error || 'Fehler')}</span>`;
+    const replaced = e.replaced_path
+      ? `<div style="font-size:10px;color:var(--orange);font-family:var(--mono);margin-top:2px" title="Ersetzt: ${escHtml(e.replaced_path)}">⇄ ${escHtml(e.replaced_path.split('/').pop())}</div>`
+      : '';
     return `
       <tr>
         <td class="td-ts">${ts}</td>
-        <td class="td-name" title="${name}">${name}</td>
+        <td class="td-name" title="${name}">${name}${replaced}</td>
         <td class="td-type">${typeLbl}</td>
         <td class="td-dest" title="${dest}">${dest}</td>
         <td class="td-status">${status}</td>

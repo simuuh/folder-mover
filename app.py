@@ -3,12 +3,14 @@
 
 import json
 import os
+import secrets
 import shutil
 import time
 import logging
 import threading
 from functools import wraps
-from flask import Flask, render_template, jsonify, request, Response, stream_with_context
+from flask import (Flask, render_template, jsonify, request,
+                   Response, stream_with_context, session, redirect, url_for)
 
 from config import load_config
 from scanner import scan_downloads
@@ -20,28 +22,50 @@ log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 config = load_config()
+app.secret_key = config.get("secret_key") or secrets.token_hex(32)
 
-# Global move results storage (single-user tool)
+# Global move state
 _move_results: list = []
-_move_inputs:  list = []   # parallel to _move_results for history
+_move_inputs:  list = []
 _move_lock = threading.Lock()
 
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth = request.authorization
-        if (not auth
-                or auth.username != config["auth"]["username"]
-                or auth.password != config["auth"]["password"]):
-            return Response(
-                "Authentication required.",
-                401,
-                {"WWW-Authenticate": 'Basic realm="Folder Mover"'},
-            )
+        if not session.get("logged_in"):
+            # API calls → 401 JSON, page calls → redirect
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "Not authenticated"}), 401
+            return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
 
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "")
+        password = request.form.get("password", "")
+        if (username == config["auth"]["username"]
+                and password == config["auth"]["password"]):
+            session.permanent = False   # survives until browser closes
+            session["logged_in"] = True
+            return redirect(url_for("index"))
+        error = "Falscher Benutzername oder Passwort."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ── Pages & API ───────────────────────────────────────────────────────────────
 
 @app.route("/")
 @require_auth
@@ -80,16 +104,13 @@ def api_move():
             _move_results.extend(results)
         hist.append(moves, results)
 
-    t = threading.Thread(target=run, daemon=True)
-    t.start()
-
+    threading.Thread(target=run, daemon=True).start()
     return jsonify({"ok": True, "message": "Move started"})
 
 
 @app.route("/api/progress")
 @require_auth
 def api_progress():
-    """Server-Sent Events stream for live move progress."""
     def generate():
         while True:
             p = get_progress()
@@ -107,11 +128,43 @@ def api_progress():
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.route("/api/delete-nas", methods=["POST"])
+@require_auth
+def api_delete_nas():
+    data = request.get_json()
+    path = data.get("path", "")
+    if not path:
+        return jsonify({"ok": False, "error": "No path provided"}), 400
+
+    # Safety: only allow deletion inside movies_dir or series_dir
+    movies_dir = os.path.realpath(config["movies_dir"])
+    series_dir = os.path.realpath(config["series_dir"])
+    target = os.path.realpath(path)
+
+    allowed = (
+        target.startswith(movies_dir + os.sep) or
+        target.startswith(series_dir + os.sep)
+    )
+    if not allowed:
+        log.warning("Refused NAS delete outside media dirs: %s", target)
+        return jsonify({"ok": False, "error": "Path outside media directories"}), 403
+
+    try:
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        elif os.path.isfile(target):
+            os.unlink(target)
+        else:
+            return jsonify({"ok": False, "error": "Path not found"}), 404
+        log.info("Deleted NAS path: %s", target)
+        return jsonify({"ok": True})
+    except Exception as e:
+        log.exception("NAS delete failed: %s", target)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/delete", methods=["POST"])
@@ -125,7 +178,6 @@ def api_delete():
     dl_dir = os.path.realpath(config["download_dir"])
     target = os.path.realpath(source_top)
 
-    # Safety: only allow deletion inside download_dir
     if not target.startswith(dl_dir + os.sep) and target != dl_dir:
         log.warning("Refused delete outside download_dir: %s", target)
         return jsonify({"ok": False, "error": "Path outside download directory"}), 403
