@@ -419,6 +419,7 @@
     padding: 10px 16px;
     font-size: 13px;
     max-width: 340px;
+    word-break: break-word;
     animation: slideIn 0.2s ease;
   }
   .toast.success { border-color: var(--green); color: var(--green); }
@@ -492,7 +493,71 @@
     .field-label { padding-top: 0; }
   }
 
-  /* ── Tabs ── */
+  /* ── Scan status panel ── */
+  .scan-status-panel {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    transition: border-color 0.3s, opacity 0.4s;
+  }
+  .scan-status-panel.scan-done { opacity: 0; }
+
+  .scan-status-icon {
+    position: relative;
+    flex-shrink: 0;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent);
+  }
+  .scan-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.15;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(0.8); opacity: 0.15; }
+    50%       { transform: scale(1.2); opacity: 0.08; }
+  }
+
+  .scan-status-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .scan-status-phase {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .scan-status-current {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .scan-status-counter {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  /* Tabs */
   .tab-nav {
     display: flex;
     gap: 2px;
@@ -806,26 +871,114 @@ async function doScan() {
   const btn = document.getElementById('btn-scan');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Scanne…';
-  document.getElementById('scan-status').textContent = '';
-  document.getElementById('state-empty').style.display = 'none';
   document.getElementById('results-section').style.display = 'none';
   document.getElementById('action-bar').style.display = 'none';
+  document.getElementById('state-empty').style.display = 'none';
+
+  // Show scan status panel
+  showScanStatus();
 
   try {
     const r = await fetch('/api/scan', { method: 'POST' });
     const data = await r.json();
-    if (!data.ok) throw new Error(data.error || 'Scan fehlgeschlagen');
-
-    items = data.items;
-    buildUI();
-    document.getElementById('tab-badge-scan').textContent = items.length;
-    toast(`${items.length} Einträge gefunden`, 'info');
+    if (!data.ok && data.error) throw new Error(data.error);
   } catch (e) {
+    hideScanStatus();
     toast('Scan Fehler: ' + e.message, 'error');
     document.getElementById('state-empty').style.display = 'block';
-  } finally {
     btn.disabled = false;
     btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
+    return;
+  }
+
+  // Listen to SSE progress
+  const es = new EventSource('/api/scan-progress');
+  es.onmessage = (event) => {
+    const p = JSON.parse(event.data);
+    updateScanStatus(p);
+
+    if (p.done && p.items !== undefined) {
+      es.close();
+      setTimeout(() => {
+        hideScanStatus();
+        if (p.error) {
+          toast('Scan Fehler: ' + p.error, 'error');
+          document.getElementById('state-empty').style.display = 'block';
+        } else {
+          items = p.items;
+          buildUI();
+          document.getElementById('tab-badge-scan').textContent = items.length;
+          toast(`${items.length} Einträge gefunden`, 'info');
+        }
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
+      }, 400);
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    hideScanStatus();
+    toast('Scan-Verbindung unterbrochen', 'error');
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
+  };
+}
+
+// ── Scan status panel ─────────────────────────────────────────────────────────
+function showScanStatus() {
+  let el = document.getElementById('scan-status-panel');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'scan-status-panel';
+    el.className = 'scan-status-panel';
+    el.innerHTML = `
+      <div class="scan-status-icon">
+        <div class="scan-pulse"></div>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      </div>
+      <div class="scan-status-text">
+        <div class="scan-status-phase" id="scan-phase">Initialisiere…</div>
+        <div class="scan-status-current" id="scan-current"></div>
+      </div>
+      <div class="scan-status-counter" id="scan-counter"></div>
+    `;
+    document.getElementById('tab-scan').prepend(el);
+  }
+  el.style.display = 'flex';
+  el.classList.remove('scan-done');
+}
+
+function hideScanStatus() {
+  const el = document.getElementById('scan-status-panel');
+  if (el) {
+    el.classList.add('scan-done');
+    setTimeout(() => { el.style.display = 'none'; }, 400);
+  }
+}
+
+function updateScanStatus(p) {
+  const phase   = document.getElementById('scan-phase');
+  const current = document.getElementById('scan-current');
+  const counter = document.getElementById('scan-counter');
+
+  if (p.phase === 'init')     phase.textContent = 'Lese Download-Verzeichnis…';
+  else if (p.phase === 'library') phase.textContent = 'Lade Serien-Bibliothek…';
+  else if (p.phase === 'scanning') phase.textContent = 'Analysiere Releases…';
+  else if (p.phase === 'done')    phase.textContent = 'Scan abgeschlossen';
+  else if (p.phase === 'error')   phase.textContent = 'Fehler beim Scan';
+
+  current.textContent = p.current || '';
+
+  if (p.found > 0) {
+    counter.textContent = p.found;
+    counter.title = `${p.found} Einträge gefunden`;
+  }
+
+  if (p.phase === 'done') {
+    const panel = document.getElementById('scan-status-panel');
+    if (panel) panel.style.borderColor = 'var(--green)';
+    const icon = panel?.querySelector('.scan-pulse');
+    if (icon) icon.style.background = 'var(--green)';
   }
 }
 

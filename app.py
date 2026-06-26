@@ -73,15 +73,59 @@ def index():
     return render_template("index.html", config=config)
 
 
+# Global scan state
+_scan_progress: dict = {}
+_scan_results:  list = []
+_scan_lock = threading.Lock()
+
+
 @app.route("/api/scan", methods=["POST"])
 @require_auth
 def api_scan():
-    try:
-        results = scan_downloads(config)
-        return jsonify({"ok": True, "items": results})
-    except Exception as e:
-        log.exception("Scan failed")
-        return jsonify({"ok": False, "error": str(e)}), 500
+    with _scan_lock:
+        _scan_progress.clear()
+        _scan_progress.update({"phase": "init", "current": "Starte…", "found": 0, "done": False, "error": None})
+        _scan_results.clear()
+
+    def run():
+        try:
+            def on_progress(state):
+                with _scan_lock:
+                    _scan_progress.update(state)
+
+            results = scan_downloads(config, on_progress=on_progress)
+            with _scan_lock:
+                _scan_results.extend(results)
+                _scan_progress.update({"phase": "done", "found": len(results), "done": True})
+        except Exception as e:
+            log.exception("Scan failed")
+            with _scan_lock:
+                _scan_progress.update({"phase": "error", "error": str(e), "done": True})
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"ok": True, "message": "Scan started"})
+
+
+@app.route("/api/scan-progress")
+@require_auth
+def api_scan_progress():
+    def generate():
+        while True:
+            with _scan_lock:
+                state = dict(_scan_progress)
+            yield f"data: {json.dumps(state)}\n\n"
+            if state.get("done"):
+                with _scan_lock:
+                    results = list(_scan_results)
+                yield f"data: {json.dumps({'done': True, 'items': results})}\n\n"
+                return
+            time.sleep(0.15)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.route("/api/move", methods=["POST"])
