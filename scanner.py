@@ -445,30 +445,18 @@ def _find_videos(folder: Path, config: dict) -> list[Path]:
 
 # ── Main scan ─────────────────────────────────────────────────────────────────
 
-def scan_downloads(config: dict, on_progress=None) -> list[dict]:
+def scan_downloads(config: dict) -> list[dict]:
     dl_dir = Path(config["download_dir"])
     if not dl_dir.exists():
         raise FileNotFoundError(f"Download directory not found: {dl_dir}")
 
-    def emit(phase: str, current: str = "", found: int = 0):
-        if on_progress:
-            on_progress({"phase": phase, "current": current, "found": found})
-
-    emit("init", "Lese Download-Verzeichnis…")
-
-    # Count entries for progress
-    all_entries = sorted(dl_dir.iterdir())
-    total = len(all_entries)
-
-    emit("library", "Lade Serien-Bibliothek vom NAS…")
+    # Build library cache once per scan
     library = SeriesLibrary(config["series_dir"])
-    emit("library", f"{len(library.all_names())} Serien indexiert")
 
     items = []
     seen_releases: set[str] = set()
 
-    for idx, entry in enumerate(all_entries):
-        emit("scanning", entry.name, len(items))
+    for entry in sorted(dl_dir.iterdir()):
         try:
             if entry.is_file():
                 ext = Path(entry.name).suffix.lower()
@@ -490,7 +478,6 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
         except Exception as e:
             log.warning("Error processing %s: %s", entry, e)
 
-    emit("done", f"{len(items)} Einträge gefunden", len(items))
     return items
 
 
@@ -510,7 +497,7 @@ def _process_release_folder(
         "wrapper_name":   top_entry.name if str(top_entry) != str(release) else None,
         "suggestion":     suggestion,
         "dest_exists":    dest_exists,
-        "size_bytes":     _dir_size(release),
+        "size_bytes":     _dir_size(release, config),
     }
 
 
@@ -548,14 +535,42 @@ def _process_loose_file(
     }
 
 
-def _dir_size(path: Path) -> int:
+def _dir_size(path: Path, config: dict | None = None) -> int:
+    """
+    Approximate the size of a release for display purposes.
+
+    Only stats video files instead of every file in the tree. On SMB/NFS each
+    stat() is a network round-trip; release folders often carry extras (.nfo,
+    .srt, sample.mkv, screenshots, ...) that add many extra round-trips while
+    contributing nothing useful to a "how big is this" estimate. If config is
+    not given (or no video files are found, e.g. for a loose file), falls back
+    to a single stat() on the path itself rather than walking everything.
+    """
     if path.is_file():
         return path.stat().st_size
+
+    exts = set((config or {}).get("video_extensions", [".mkv", ".mp4", ".avi"]))
     total = 0
+    found_any = False
     for root, _, files in os.walk(path):
         for f in files:
+            if Path(f).suffix.lower() not in exts:
+                continue
             try:
                 total += (Path(root) / f).stat().st_size
+                found_any = True
             except OSError:
                 pass
+
+    if found_any:
+        return total
+
+    # No video files found (e.g. wrong extensions configured) — fall back to
+    # a top-level-only estimate instead of a full recursive stat of everything.
+    try:
+        for entry in path.iterdir():
+            if entry.is_file():
+                total += entry.stat().st_size
+    except OSError:
+        pass
     return total

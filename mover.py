@@ -11,6 +11,7 @@ from typing import Callable
 log = logging.getLogger(__name__)
 
 CHUNK_SIZE = 4 * 1024 * 1024  # 4 MB read chunks
+FSYNC_EVERY_BYTES = 64 * 1024 * 1024  # fsync at most every 64 MB (not every chunk)
 
 # ── Global progress state (single-user tool) ──────────────────────────────────
 _progress_lock = threading.Lock()
@@ -217,21 +218,40 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 # ── Chunked file copy ─────────────────────────────────────────────────────────
 
 def _copy_with_progress(src: Path, dst: Path, callback: Callable):
-    """Copy src → dst in 4 MB chunks, firing callback per chunk after actual write."""
+    """
+    Copy src → dst in 4 MB chunks, firing callback per chunk after actual write.
+
+    fsync() is only forced every FSYNC_EVERY_BYTES (plus once at the end),
+    not after every single 4 MB chunk. fsync on SMB/NFS is a blocking round-trip,
+    so syncing on every chunk turns a fast network copy into one limited by
+    sync latency rather than actual throughput. Periodic syncing still keeps
+    the progress/speed numbers reasonably accurate (re-anchored every ~64 MB)
+    while avoiding hundreds of extra round-trips per file.
+    """
     total = src.stat().st_size
     copied = 0
+    since_last_sync = 0
     with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
         while True:
             buf = fsrc.read(CHUNK_SIZE)
             if not buf:
                 break
             fdst.write(buf)
-            # Force flush to SMB/NFS so timing reflects actual network speed
-            fdst.flush()
-            os.fsync(fdst.fileno())
             chunk = len(buf)
             copied += chunk
+            since_last_sync += chunk
+
+            if since_last_sync >= FSYNC_EVERY_BYTES:
+                fdst.flush()
+                os.fsync(fdst.fileno())
+                since_last_sync = 0
+
             callback(src.name, copied, total, chunk)
+
+        # Always sync the tail so the file is fully on disk/NAS before we
+        # touch metadata or unlink the source.
+        fdst.flush()
+        os.fsync(fdst.fileno())
     shutil.copystat(str(src), str(dst))
 
 
