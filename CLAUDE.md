@@ -16,23 +16,28 @@ Kein Datenbank-Backend — Zustand lebt in: `config.yaml` (Konfiguration),
 ## Architektur & Datenfluss
 
 ```
-Browser (templates/index.html, ~1600 Zeilen Vanilla JS, kein Build-Step)
-   │  POST /api/scan
+Browser (templates/index.html, ~1600+ Zeilen Vanilla JS, kein Build-Step)
+   │  POST /api/scan   (startet nur einen Hintergrund-Thread, antwortet sofort)
    ▼
-app.py  ──────────────►  scanner.py: scan_downloads(config)
+app.py: api_scan() → threading.Thread → scanner.py: scan_downloads(config, on_progress=...)
+   │                        ├─ emit("init"/"library"/"scanning"/"done"/"error", current, found)
+   │                        │   → app.py schreibt das in _scan_progress (mit _scan_lock)
    │                        ├─ SeriesLibrary: liest series_dir EINMAL pro Scan,
    │                        │   indexiert alle vorhandenen Serienordner
    │                        ├─ find_release_folder(): entfernt UUID-/Hoster-Wrapper
    │                        ├─ classify(): Regex-Erkennung S01E01 / S01 / 1x01 / Folge NN / Jahr+Qualität
    │                        ├─ library.match(): LCS-basiertes Fuzzy-Matching gegen NAS-Bibliothek
    │                        └─ _dir_size() / _find_movie_duplicate(): Walks über Quell- bzw. NAS-Verzeichnisse
-   │  → Liste von "items" (Vorschläge) als JSON
+   │
+   ▼
+GET /api/scan-progress (Server-Sent Events, Poll alle 0.15s)
+   │   liefert {phase, current, found} laufend, am Ende {done: true, items: [...]}
    ▼
 Browser zeigt Karten zur manuellen Bestätigung/Bearbeitung an
    │  POST /api/move  { moves: [...] }
    ▼
 app.py startet Thread → mover.py: execute_moves()
-   │   _copy_with_progress(): Chunked Copy (4 MB), fsync() NACH JEDEM Chunk,
+   │   _copy_with_progress(): Chunked Copy (4 MB), fsync() periodisch (alle 64 MB + am Dateiende),
    │   danach Quelle löschen (os.unlink / shutil.rmtree)
    ▼
 GET /api/progress (Server-Sent Events, Poll alle 0.25s) → Live-Fortschrittsbalken
@@ -40,6 +45,18 @@ GET /api/progress (Server-Sent Events, Poll alle 0.25s) → Live-Fortschrittsbal
    ▼
 history.py: append() schreibt Ergebnis nach history.jsonl (max. 500 Zeilen, älteste werden getrimmt)
 ```
+
+**Wichtig:** `/api/scan` ist **asynchron** — der POST-Request startet nur einen Thread und
+antwortet sofort mit `{"ok": true}`. Die eigentlichen Scan-Ergebnisse kommen ausschließlich
+über den SSE-Stream `/api/scan-progress` (Event mit `done: true` enthält `items`). Wer an
+`scan_downloads()` etwas ändert, **muss** den `on_progress`-Parameter erhalten — `app.py`
+ruft ihn fest mit `scan_downloads(config, on_progress=on_progress)` auf. Ohne diesen
+Parameter wirft der Call einen `TypeError`, der nur im Hintergrund-Thread landet: der
+HTTP-Request selbst bleibt `200 OK`, aber `/api/scan-progress` hängt für immer (kein
+`done`-Event kommt je an) — das Symptom ist ein endlos drehender Browser-Tab-Spinner
+ohne sichtbaren Fehler im Vordergrund. Diese Kopplung schon einmal versehentlich gebrochen
+worden (siehe Git-Historie) — beim Ändern von `scanner.py` immer gegen den tatsächlichen
+`app.py`-Aufruf prüfen, nicht nur gegen die Funktionsdefinition isoliert.
 
 ### Module
 
@@ -109,6 +126,14 @@ behandelt wurden:
   erneut zu walken.
 - Für `/api/scan` ein explizites Timeout/Logging um die NAS-Zugriffe legen, damit
   ein hängender Mount sich wenigstens als Log-Zeile zeigt statt als stiller Hang.
+
+## Git-Setup
+
+Aktiver Branch ist **`main`**. Es existiert zusätzlich ein lokaler Branch `mistral`
+mit einem alternativen, unfertigen Scanner-Refactoring (vereinfachte Klassifikation,
+keine `SeriesLibrary`-Klasse) — der ist **nicht** in `main` gemerged und sollte nicht
+versehentlich als Referenz für Änderungen an `main` verwendet werden, da die beiden
+Branches inkompatible `scanner.py`-Versionen haben.
 
 ## Sicherheitsrelevante Stellen (beim Ändern besonders vorsichtig sein)
 

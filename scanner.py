@@ -445,18 +445,28 @@ def _find_videos(folder: Path, config: dict) -> list[Path]:
 
 # ── Main scan ─────────────────────────────────────────────────────────────────
 
-def scan_downloads(config: dict) -> list[dict]:
+def scan_downloads(config: dict, on_progress=None) -> list[dict]:
     dl_dir = Path(config["download_dir"])
     if not dl_dir.exists():
         raise FileNotFoundError(f"Download directory not found: {dl_dir}")
 
-    # Build library cache once per scan
+    def emit(phase: str, current: str = "", found: int = 0):
+        if on_progress:
+            on_progress({"phase": phase, "current": current, "found": found})
+
+    emit("init", "Lese Download-Verzeichnis…")
+
+    all_entries = sorted(dl_dir.iterdir())
+
+    emit("library", "Lade Serien-Bibliothek vom NAS…")
     library = SeriesLibrary(config["series_dir"])
+    emit("library", f"{len(library.all_names())} Serien indexiert")
 
     items = []
     seen_releases: set[str] = set()
 
-    for entry in sorted(dl_dir.iterdir()):
+    for entry in all_entries:
+        emit("scanning", entry.name, len(items))
         try:
             if entry.is_file():
                 ext = Path(entry.name).suffix.lower()
@@ -478,6 +488,7 @@ def scan_downloads(config: dict) -> list[dict]:
         except Exception as e:
             log.warning("Error processing %s: %s", entry, e)
 
+    emit("done", f"{len(items)} Einträge gefunden", len(items))
     return items
 
 
