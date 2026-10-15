@@ -64,6 +64,18 @@ def read(limit: int = 200) -> list[dict]:
         return []
 
 
+def count() -> int:
+    """Total number of stored entries (independent of any read limit)."""
+    if not HISTORY_FILE.exists():
+        return 0
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            return sum(1 for line in f if line.strip())
+    except Exception as ex:
+        log.warning("Could not count history: %s", ex)
+        return 0
+
+
 def _trim():
     """Keep only the last MAX_ENTRIES lines."""
     try:

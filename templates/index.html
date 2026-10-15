@@ -1680,7 +1680,7 @@ async function loadHistory(silent = false) {
   try {
     const data = await api('/api/history?limit=200');
     _histEntries = data.entries;
-    document.getElementById('tab-badge-history').textContent = _histEntries.length;
+    document.getElementById('tab-badge-history').textContent = data.total ?? _histEntries.length;
     renderHistory();
   } catch (e) {
     if (!silent) toast('Historie konnte nicht geladen werden: ' + e.message, 'error');

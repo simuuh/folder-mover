@@ -282,13 +282,16 @@ def api_move():
         _move_results.clear()
     mark_pending(len(moves))
 
+    def on_done(results):
+        # Runs before the progress state reports "finished" (see execute_moves)
+        with _move_lock:
+            _move_results.extend(results)
+        hist.append(moves, results)
+
     def run():
         global _move_running
         try:
-            results = execute_moves(moves, config)
-            with _move_lock:
-                _move_results.extend(results)
-            hist.append(moves, results)
+            execute_moves(moves, config, on_done=on_done)
         except Exception as e:
             log.exception("Move worker crashed")
             mark_failed(str(e))
@@ -386,7 +389,7 @@ def api_delete():
 def api_history():
     limit = request.args.get("limit", 200, type=int)
     limit = max(1, min(limit, 500))
-    return jsonify({"ok": True, "entries": hist.read(limit)})
+    return jsonify({"ok": True, "entries": hist.read(limit), "total": hist.count()})
 
 
 def main():

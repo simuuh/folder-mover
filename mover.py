@@ -52,8 +52,15 @@ def mark_failed(error: str):
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def execute_moves(moves: list[dict], config: dict) -> list[dict]:
-    """Execute moves with live progress updates via get_progress()."""
+def execute_moves(
+    moves: list[dict], config: dict, on_done: Callable[[list[dict]], None] | None = None,
+) -> list[dict]:
+    """
+    Execute moves with live progress updates via get_progress().
+
+    `on_done(results)` runs BEFORE the progress state switches to finished, so
+    anything the client reloads on "finished" (results, history) already exists.
+    """
     total_bytes = sum(_calc_size(m) for m in moves)
     copied_bytes = 0
 
@@ -106,6 +113,12 @@ def execute_moves(moves: list[dict], config: dict) -> list[dict]:
             results.append({"source_release": move.get("source_release"), "ok": False, "error": str(e)})
             with _progress_lock:
                 _progress["errors"].append(str(e))
+
+    if on_done:
+        try:
+            on_done(results)
+        except Exception:
+            log.exception("on_done callback failed")
 
     _set(
         active=False,
