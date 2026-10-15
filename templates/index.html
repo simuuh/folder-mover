@@ -1092,7 +1092,10 @@ function renderStats() {
 function renderItems() {
   const list = document.getElementById('items-list');
   list.innerHTML = '';
-  items.forEach(item => list.appendChild(buildCard(item)));
+  items.forEach(item => {
+    list.appendChild(buildCard(item));
+    updateDestPreview(item._k);   // card must be in the DOM first
+  });
 }
 
 const TYPE_BADGE = {
