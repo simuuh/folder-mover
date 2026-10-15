@@ -1,0 +1,8 @@
+* text=auto
+# Files executed/parsed on Linux must keep LF line endings, even in Windows checkouts
+*.sh       text eol=lf
+*.service  text eol=lf
+*.py       text eol=lf
+*.yaml     text eol=lf
+*.yaml.example text eol=lf
+*.svg      text eol=lf

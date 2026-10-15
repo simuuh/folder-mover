@@ -16,7 +16,7 @@ Kein Datenbank-Backend — Zustand lebt in: `config.yaml` (Konfiguration),
 ## Architektur & Datenfluss
 
 ```
-Browser (templates/index.html, ~1600+ Zeilen Vanilla JS, kein Build-Step)
+Browser (templates/index.html + static/theme.css, Vanilla JS, kein Build-Step)
    │  POST /api/scan   (startet nur einen Hintergrund-Thread, antwortet sofort)
    ▼
 app.py: api_scan() → threading.Thread → scanner.py: scan_downloads(config, on_progress=...)
@@ -24,20 +24,22 @@ app.py: api_scan() → threading.Thread → scanner.py: scan_downloads(config, o
    │                        │   → app.py schreibt das in _scan_progress (mit _scan_lock)
    │                        ├─ SeriesLibrary: liest series_dir EINMAL pro Scan,
    │                        │   indexiert alle vorhandenen Serienordner
-   │                        ├─ find_release_folder(): entfernt UUID-/Hoster-Wrapper
+   │                        ├─ find_releases(): löst Wrapper rekursiv auf (auch Wrapper im
+   │                        │   Wrapper), liefert 0..n Releases (Ordner ODER lose Videodatei)
    │                        ├─ classify(): Regex-Erkennung S01E01 / S01 / 1x01 / Folge NN / Jahr+Qualität
    │                        ├─ library.match(): LCS-basiertes Fuzzy-Matching gegen NAS-Bibliothek
-   │                        └─ _dir_size() / _find_movie_duplicate(): Walks über Quell- bzw. NAS-Verzeichnisse
+   │                        └─ _dir_stats() / _find_movie_duplicate(): Grösse + .part-Erkennung bzw. NAS-Duplikate
    │
    ▼
 GET /api/scan-progress (Server-Sent Events, Poll alle 0.15s)
-   │   liefert {phase, current, found} laufend, am Ende {done: true, items: [...]}
+   │   liefert {phase, current, found} laufend, am Ende {done: true, items, error, known_series}
    ▼
 Browser zeigt Karten zur manuellen Bestätigung/Bearbeitung an
    │  POST /api/move  { moves: [...] }
    ▼
-app.py startet Thread → mover.py: execute_moves()
+app.py validiert JEDEN Move serverseitig (_validate_move) → Thread → mover.py: execute_moves()
    │   _copy_with_progress(): Chunked Copy (4 MB), fsync() periodisch (alle 64 MB + am Dateiende),
+   │   Speicherplatz-Check vor jedem Item, Teildatei wird bei Fehler gelöscht,
    │   danach Quelle löschen (os.unlink / shutil.rmtree)
    ▼
 GET /api/progress (Server-Sent Events, Poll alle 0.25s) → Live-Fortschrittsbalken
@@ -66,16 +68,21 @@ worden (siehe Git-Historie) — beim Ändern von `scanner.py` immer gegen den ta
 | `scanner.py` | Klassifikation, Wrapper-Erkennung, Fuzzy-Matching gegen NAS-Bibliothek, Scan-Resultate |
 | `mover.py` | Tatsächliches Kopieren mit Fortschritt/Speed/ETA, Cleanup nach dem Move |
 | `history.py` | Append-only JSONL-Log für abgeschlossene Moves |
-| `config.py` | Lädt `config.yaml`, merged mit `DEFAULT_CONFIG` (flaches Deep-Merge auf Top-Level-Keys) |
-| `templates/index.html` | Komplettes Frontend (HTML+CSS+JS in einer Datei), kein Framework, kein Build |
-| `templates/login.html` | Login-Formular für Basic-Session-Auth |
+| `config.py` | Lädt `config.yaml`, merged mit `DEFAULT_CONFIG` (flaches Deep-Merge auf Top-Level-Keys); `video_extensions()`-Helper |
+| `gunicorn.conf.py` | Produktions-Server-Settings (liest host/port aus der Config) |
+| `templates/index.html` | Frontend (HTML+CSS+JS in einer Datei), kein Framework, kein Build |
+| `templates/login.html` | Login-Formular |
+| `static/theme.css` | Gemeinsame Design-Tokens Dark/Light für beide Templates |
+| `tests/` | pytest-Suite (Scanner, Mover, API inkl. Pfad-Validierung) |
 
 ### Auth-Modell
 
-Einfache Session-basierte Anmeldung (`app.py: require_auth`), Credentials aus
-`config.yaml: auth.username/password` im Klartext. Kein Passwort-Hashing, kein
-Rate-Limiting auf `/login`. Bewusst minimal gehalten für LAN/VPN-Nutzung — **nicht
-für Exposition ins offene Internet gedacht.**
+Session-basierte Anmeldung (`app.py: require_auth`). Credentials aus
+`config.yaml: auth.username` + `auth.password_hash` (Werkzeug-Hash, erzeugt mit
+`python app.py --hash-password`) oder als Fallback `auth.password` im Klartext
+(Vergleich via `hmac.compare_digest`). Einfaches In-Memory-Lockout nach 5
+Fehlversuchen pro IP. Cookie `SameSite=Lax`/`HttpOnly`, Security-Header inkl. CSP
+in `after_request`. Gedacht für LAN/VPN — **nicht für Exposition ins offene Internet.**
 
 ## Bekannte Performance-Falle: "Webapp lädt sehr lange, kein Fehler im Log"
 
@@ -91,7 +98,7 @@ behandelt wurden:
    - `library.match()` für **jeden** Scan-Eintrag **alle** indexierten Serien
      mit LCS vergleicht (`O(n_items × n_series × 60²)` Zeichenvergleiche).
      *(noch unverändert)*
-   - ~~`_dir_size()` für jeden gefundenen Release-Ordner per `os.walk` + `stat()`
+   - ~~`_dir_size()` (heute `_dir_stats()`) für jeden gefundenen Release-Ordner per `os.walk` + `stat()`
      **jede einzelne Datei** durchläuft, nur um die Anzeigegröße zu ermitteln.~~
      **Behoben:** `_dir_size()` stat't jetzt nur noch Dateien mit einer
      konfigurierten Video-Extension (Extras wie `.nfo`/`.srt`/Samples werden
@@ -137,22 +144,29 @@ Branches inkompatible `scanner.py`-Versionen haben.
 
 ## Sicherheitsrelevante Stellen (beim Ändern besonders vorsichtig sein)
 
-- `app.py: api_delete` und `api_delete_nas` — Pfad-Traversal-Schutz über
-  `os.path.realpath(...).startswith(allowed_dir + os.sep)`. Jede Änderung an dieser
-  Logik kann dazu führen, dass beliebige Pfade außerhalb der konfigurierten
-  Verzeichnisse gelöscht werden können. Sorgfältig testen, insbesondere Edge-Cases
-  wie Symlinks und Pfade ohne abschließenden Separator.
-- Passwort liegt im Klartext in `config.yaml` (nicht versioniert, siehe `.gitignore`).
-  Keine Hashing-Logik vorhanden — falls das geändert wird, `app.py: login()` und
-  `config.py` gemeinsam anpassen.
+- `app.py: _is_within()` ist der zentrale Pfad-Traversal-Schutz (realpath +
+  `os.path.commonpath`). Benutzt von `api_delete`, `api_delete_nas` und
+  `_validate_move`. Das Root-Verzeichnis selbst ist **nie** erlaubt (sonst könnte
+  z. B. das ganze `download_dir` gelöscht werden). Änderungen immer mit
+  `tests/test_app.py` absichern.
+- `/api/move` bekommt Quell-/Zielpfade vom Client — `_validate_move()` darf nicht
+  umgangen werden (Quelle in `download_dir`, Ziel in `movies_dir`/`series_dir`,
+  `video_files` ohne `..`).
+- Frontend: Dateinamen stammen aus Downloads und sind **nicht vertrauenswürdig**.
+  Niemals in `onclick`/Attribute interpolieren — Karten werden über den numerischen
+  Key `item._k` + Event-Delegation (`data-action`) angesprochen, Text immer über
+  `escHtml()` bzw. `textContent`.
+- Passwort/Hash in `config.yaml` (nicht versioniert, siehe `.gitignore`).
 
 ## Konventionen in diesem Code
 
 - Python 3.11+, Type Hints im neuen Stil (`str | None`, `dict[str, str]`).
-- Kein Test-Framework vorhanden — Änderungen manuell gegen eine Beispielordnerstruktur
-  prüfen (siehe README "Folder structure it handles" für typische Eingaben).
-- Frontend ist **eine** Datei (`templates/index.html`) ohne Build-Step — Änderungen
-  direkt im HTML/JS, kein separates Bundling.
+- Tests: `pytest` (Ordnerstrukturen werden in `tmp_path` erzeugt, Helper
+  `make_files()` in `tests/conftest.py`). Lint: `ruff check .`. Beides läuft in CI
+  (`.github/workflows/ci.yml`). Neue Wrapper-Fälle immer als Test in
+  `tests/test_scanner.py` ergänzen.
+- Frontend ist `templates/index.html` (+ `static/theme.css` für Farben) ohne
+  Build-Step. Farben nur über CSS-Variablen, damit Dark/Light funktionieren.
 - Konfiguration ist immer optional zu lesen über `config.get(key, default)` —
   `DEFAULT_CONFIG` in `config.py` ist die Quelle der Wahrheit für Defaults.
 - Deutsche UI-Strings (z. B. "Scanne…", "Verschiebe Dateien…") — bei neuen
@@ -163,7 +177,7 @@ Branches inkompatible `scanner.py`-Versionen haben.
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp config.yaml.example config.yaml   # Pfade + Passwort anpassen
 python app.py                        # läuft auf :8080 (oder konfiguriertem Port)
 ```
@@ -174,7 +188,10 @@ Im Produktivbetrieb via systemd: `journalctl -u folder-mover -f`.
 ## Deployment
 
 `install.sh` kopiert die App nach `/opt/folder-mover`, legt ein venv an, installiert
-`folder-mover.service` (systemd) und startet den Service. Bei Code-Änderungen am
+`folder-mover.service` (systemd, gunicorn via `gunicorn.conf.py`) und startet den
+Service. **Es muss genau EIN gunicorn-Worker laufen** — Scan-/Move-Zustand liegt im
+Prozessspeicher; mehrere Worker würden sich gegenseitig nicht sehen. Neue
+Python-Dateien/Ordner müssen in der `cp`-Zeile von `install.sh` ergänzt werden. Bei Code-Änderungen am
 Produktivsystem: Dateien erneut nach `/opt/folder-mover` kopieren und
 `sudo systemctl restart folder-mover` ausführen — das Skript überschreibt
 keine bestehende `config.yaml`.

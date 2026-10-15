@@ -4,34 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folder Mover</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23141720'/><path d='M6 10h8l2 3h10v12H6z' fill='none' stroke='%234f8ef7' stroke-width='2' stroke-linejoin='round'/><path d='M11 19l3 3 5-5' stroke='%233ecf76' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<script>try{var t=localStorage.getItem('fm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Inter:wght@300;400;500;600&display=swap');
-
-  :root {
-    --bg:        #0d0f12;
-    --surface:   #141720;
-    --border:    #252a35;
-    --text:      #c8d0e0;
-    --muted:     #5a6275;
-    --accent:    #4f8ef7;
-    --green:     #3ecf76;
-    --orange:    #f59e0b;
-    --red:       #ef4444;
-    --mono:      'JetBrains Mono', monospace;
-    --sans:      'Inter', sans-serif;
-  }
-
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    font-size: 14px;
-    min-height: 100vh;
-  }
-
   /* ── Header ── */
   header {
     background: var(--surface);
@@ -45,14 +21,8 @@
     top: 0;
     z-index: 100;
   }
-  .logo {
-    font-family: var(--mono);
-    font-size: 15px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -0.5px;
-  }
-  .logo span { color: var(--accent); }
+  .logo { font-size: 15px; display: flex; align-items: baseline; gap: 8px; }
+  .version { font-size: 10px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
 
   .header-actions {
     display: flex;
@@ -76,17 +46,21 @@
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
+    text-decoration: none;
   }
-  .btn:hover { border-color: var(--accent); color: #fff; }
+  .btn:hover { border-color: var(--accent); color: var(--heading); }
   .btn:active { transform: scale(0.97); }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-icon { padding: 7px 10px; }
+  .btn-sm { font-size: 12px; padding: 5px 10px; }
+  .btn-xs { font-size: 11px; padding: 3px 10px; flex-shrink: 0; }
 
   .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
   }
-  .btn-primary:hover { background: #6ba3ff; border-color: #6ba3ff; }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
 
   .btn-danger {
     background: transparent;
@@ -98,16 +72,21 @@
   .btn-success {
     background: var(--green);
     border-color: var(--green);
-    color: #0d0f12;
+    color: var(--on-green);
     font-weight: 600;
   }
-  .btn-success:hover { background: #5de08f; }
+  .btn-success:hover { background: var(--green-hover); border-color: var(--green-hover); color: var(--on-green); }
+
+  /* theme toggle: show the icon of the theme you would switch to */
+  .icon-sun { display: none; }
+  .theme-dark .icon-sun { display: block; }
+  .theme-dark .icon-moon { display: none; }
 
   /* ── Main layout ── */
   main {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 24px 20px 60px;
+    padding: 24px 20px 90px;
   }
 
   /* ── Stats bar ── */
@@ -119,6 +98,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
+    box-shadow: var(--shadow);
     align-items: center;
     flex-wrap: wrap;
   }
@@ -159,8 +139,9 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 8px;
+    box-shadow: var(--shadow);
     overflow: hidden;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, opacity 0.3s, max-height 0.3s;
   }
   .item-card.selected { border-color: var(--accent); }
   .item-card.skipped { opacity: 0.45; }
@@ -175,7 +156,7 @@
     cursor: pointer;
     user-select: none;
   }
-  .item-header:hover { background: rgba(255,255,255,0.02); }
+  .item-header:hover { background: var(--hover); }
 
   .item-checkbox {
     flex-shrink: 0;
@@ -202,9 +183,10 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  .badge-movie  { background: rgba(79,142,247,0.15); color: var(--accent); }
-  .badge-series { background: rgba(62,207,118,0.15); color: var(--green); }
-  .badge-unknown { background: rgba(245,158,11,0.15); color: var(--orange); }
+  .badge-movie   { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  .badge-series  { background: color-mix(in srgb, var(--green) 15%, transparent);  color: var(--green); }
+  .badge-unknown { background: color-mix(in srgb, var(--orange) 15%, transparent); color: var(--orange); }
+  .badge-warn    { background: color-mix(in srgb, var(--orange) 15%, transparent); color: var(--orange); text-transform: none; font-family: var(--sans); }
 
   .item-name {
     flex: 1;
@@ -265,14 +247,6 @@
   }
   .field-value.source { color: var(--text); }
 
-  .arrow-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 2px 0;
-  }
-  .arrow-row svg { color: var(--muted); flex-shrink: 0; }
-
   /* editable fields */
   .edit-group {
     display: flex;
@@ -283,6 +257,7 @@
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
   }
   .edit-label {
     font-size: 11px;
@@ -306,30 +281,34 @@
   input[type="number"]:focus,
   select:focus { border-color: var(--accent); }
   select option { background: var(--surface); }
-  input[type="number"] { width: 80px; }
+  input[type="number"] { width: 72px; }
+  .input-grow { flex: 1; min-width: 160px; }
+  .select-type { width: 140px; }
 
   .dest-preview {
     font-family: var(--mono);
     font-size: 11px;
     color: var(--accent);
     padding: 6px 10px;
-    background: rgba(79,142,247,0.07);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
     border-radius: 5px;
-    border: 1px solid rgba(79,142,247,0.2);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
     word-break: break-all;
     margin-top: 2px;
   }
   .dest-preview.warn {
     color: var(--orange);
-    background: rgba(245,158,11,0.07);
-    border-color: rgba(245,158,11,0.25);
+    background: color-mix(in srgb, var(--orange) 7%, transparent);
+    border-color: color-mix(in srgb, var(--orange) 25%, transparent);
   }
 
   .wrapper-note {
     font-size: 11px;
     color: var(--muted);
     font-style: italic;
+    word-break: break-all;
   }
+  .wrapper-note code { font-family: var(--mono); font-style: normal; }
 
   /* ── Library match badges ── */
   .match-badge {
@@ -341,9 +320,9 @@
     white-space: nowrap;
     letter-spacing: 0.3px;
   }
-  .match-auto { background: rgba(62,207,118,0.15); color: var(--green); border: 1px solid rgba(62,207,118,0.3); }
-  .match-hint { background: rgba(245,158,11,0.15); color: var(--orange); border: 1px solid rgba(245,158,11,0.3); }
-  .match-new  { background: rgba(79,142,247,0.12); color: var(--accent); border: 1px solid rgba(79,142,247,0.25); }
+  .match-auto { background: color-mix(in srgb, var(--green) 15%, transparent);  color: var(--green);  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
+  .match-hint { background: color-mix(in srgb, var(--orange) 15%, transparent); color: var(--orange); border: 1px solid color-mix(in srgb, var(--orange) 30%, transparent); }
+  .match-new  { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
 
   .season-badge {
     font-size: 10px;
@@ -352,15 +331,15 @@
     border-radius: 4px;
     white-space: nowrap;
   }
-  .season-exists { background: rgba(62,207,118,0.12); color: var(--green); }
-  .season-new    { background: rgba(245,158,11,0.10); color: var(--orange); }
+  .season-exists { background: color-mix(in srgb, var(--green) 12%, transparent);  color: var(--green); }
+  .season-new    { background: color-mix(in srgb, var(--orange) 10%, transparent); color: var(--orange); }
 
-  .duplicate-note {
+  .note {
     font-size: 11px;
     color: var(--orange);
     padding: 6px 10px;
-    background: rgba(245,158,11,0.07);
-    border: 1px solid rgba(245,158,11,0.2);
+    background: color-mix(in srgb, var(--orange) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--orange) 20%, transparent);
     border-radius: 5px;
     display: flex;
     align-items: center;
@@ -368,7 +347,7 @@
     gap: 10px;
     flex-wrap: wrap;
   }
-  .duplicate-note code {
+  .note code {
     font-family: var(--mono);
     font-size: 10px;
     color: var(--muted);
@@ -379,7 +358,7 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    padding-top: 4px;
+    padding-top: 10px;
     border-top: 1px solid var(--border);
   }
 
@@ -395,13 +374,13 @@
     justify-content: space-between;
     gap: 12px;
     z-index: 100;
-    backdrop-filter: blur(8px);
   }
   .action-bar-info {
     font-size: 13px;
     color: var(--muted);
   }
   .action-bar-info strong { color: var(--text); }
+  .action-bar-buttons { display: flex; gap: 8px; }
 
   /* ── Toast ── */
   #toast-container {
@@ -410,12 +389,13 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 200;
+    z-index: 400;
   }
   .toast {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 7px;
+    box-shadow: var(--shadow);
     padding: 10px 16px;
     font-size: 13px;
     max-width: 340px;
@@ -430,34 +410,38 @@
     to   { opacity: 1; transform: translateX(0); }
   }
 
-  /* ── Progress overlay ── */
-  #progress-overlay {
+  /* ── Modals (confirm + progress) ── */
+  .overlay {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(13,15,18,0.88);
+    background: var(--overlay);
     z-index: 300;
     align-items: center;
     justify-content: center;
+    padding: 16px;
   }
-  #progress-overlay.active { display: flex; }
-  .progress-box {
+  .overlay.active { display: flex; }
+  .modal-box {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 28px 32px;
-    min-width: 480px;
-    max-width: 90vw;
+    width: min(480px, 100%);
     display: flex;
     flex-direction: column;
     gap: 18px;
   }
+  .modal-box h3 { font-size: 15px; font-weight: 600; color: var(--heading); }
+  .modal-text { font-size: 13px; color: var(--muted); line-height: 1.6; white-space: pre-line; word-break: break-word; }
+  .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+
   .prog-header { display: flex; align-items: center; gap: 12px; }
-  .prog-header h3 { font-size: 15px; font-weight: 600; color: #fff; flex: 1; }
+  .prog-header h3 { flex: 1; }
   .prog-items-count { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-  .prog-bar-wrap { display: flex; flex-direction: column; gap: 5px; }
+  .prog-bar-wrap { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
   .prog-bar-label {
-    display: flex; justify-content: space-between;
+    display: flex; justify-content: space-between; gap: 10px;
     font-size: 11px; color: var(--muted); font-family: var(--mono);
   }
   .prog-bar-label span { color: var(--text); }
@@ -467,16 +451,16 @@
     transition: width 0.2s linear; width: 0%;
   }
   .prog-bar-fill.done { background: var(--green); }
-  .prog-file-bar .prog-bar-fill { background: #6ba3ff; opacity: 0.6; }
+  .prog-file-bar .prog-bar-fill { background: var(--accent-hover); opacity: 0.6; }
   .prog-stats { display: flex; gap: 20px; flex-wrap: wrap; }
   .prog-stat { display: flex; flex-direction: column; gap: 2px; }
   .prog-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
   .prog-stat-value { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); }
   .prog-stat-value.accent { color: var(--accent); }
-  .prog-stat-value.green  { color: var(--green); }
   .prog-current-file { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prog-current-item { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .prog-errors { font-size: 12px; color: var(--red); font-family: var(--mono); max-height: 80px; overflow-y: auto; }
+  .prog-errors { font-size: 12px; color: var(--red); font-family: var(--mono); max-height: 80px; overflow-y: auto; white-space: pre-line; }
+  #prog-close-btn { width: 100%; justify-content: center; margin-top: 4px; }
 
   /* ── Select all ── */
   .toolbar {
@@ -486,12 +470,6 @@
     margin-bottom: 12px;
   }
   .toolbar-label { font-size: 12px; color: var(--muted); }
-
-  /* responsive */
-  @media (max-width: 600px) {
-    .field-row { grid-template-columns: 1fr; }
-    .field-label { padding-top: 0; }
-  }
 
   /* ── Scan status panel ── */
   .scan-status-panel {
@@ -506,6 +484,8 @@
     transition: border-color 0.3s, opacity 0.4s;
   }
   .scan-status-panel.scan-done { opacity: 0; }
+  .scan-status-panel.scan-ok { border-color: var(--green); }
+  .scan-status-panel.scan-ok .scan-pulse { background: var(--green); }
 
   .scan-status-icon {
     position: relative;
@@ -590,7 +570,7 @@
     padding: 1px 6px;
     border-radius: 10px;
   }
-  .tab-btn.active .tab-badge { background: rgba(79,142,247,0.2); color: var(--accent); }
+  .tab-btn.active .tab-badge { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
 
   /* ── History table ── */
   .hist-toolbar {
@@ -603,6 +583,7 @@
   .hist-filter {
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
   }
   .hist-filter-btn {
     padding: 4px 12px;
@@ -616,18 +597,21 @@
     transition: all 0.15s;
   }
   .hist-filter-btn:hover { color: var(--text); }
-  .hist-filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,0.08); }
+  .hist-filter-btn.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 
   .hist-search {
     flex: 1;
     min-width: 180px;
     max-width: 300px;
   }
+  .hist-refresh { margin-left: auto; }
 
   .hist-table-wrap {
     overflow-x: auto;
     border: 1px solid var(--border);
     border-radius: 8px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
   }
   table {
     width: 100%;
@@ -651,7 +635,7 @@
     transition: background 0.1s;
   }
   tbody tr:last-child { border-bottom: none; }
-  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody tr:hover { background: var(--hover); }
   tbody td {
     padding: 9px 14px;
     vertical-align: middle;
@@ -673,14 +657,14 @@
     white-space: nowrap;
     font-size: 11px;
   }
-  .td-ts {
+  .td-ts, .td-size {
     color: var(--muted);
     white-space: nowrap;
     font-family: var(--mono);
     font-size: 11px;
   }
-  .td-type { white-space: nowrap; }
-  .td-status { white-space: nowrap; }
+  .td-type, .td-status { white-space: nowrap; }
+  .td-replaced { font-size: 10px; color: var(--orange); font-family: var(--mono); margin-top: 2px; }
   .ok-dot   { color: var(--green); font-weight: 700; }
   .err-dot  { color: var(--red);   font-weight: 700; }
   .hist-empty {
@@ -688,34 +672,50 @@
     padding: 50px 20px;
     color: var(--muted);
     font-size: 13px;
-  }</style>
+  }
+
+  /* responsive */
+  @media (max-width: 600px) {
+    header { padding: 0 12px; }
+    main { padding: 16px 12px 110px; }
+    .btn-label { display: none; }
+    .field-row { grid-template-columns: 1fr; }
+    .field-label { padding-top: 0; }
+    .action-bar { padding: 10px 12px; flex-wrap: wrap; }
+    .modal-box { padding: 20px; }
+    .item-header { gap: 8px; padding: 12px; }
+  }
+</style>
 </head>
 <body>
 
 <header>
-  <div class="logo">folder<span>.</span>mover</div>
+  <div class="logo">folder<span>.</span>mover <span class="version">v{{ version }}</span></div>
   <div class="header-actions">
-    <div id="scan-status" style="font-size:12px;color:var(--muted)"></div>
     <button class="btn btn-primary" id="btn-scan" onclick="doScan()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      Scan Downloads
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span class="btn-label">Scan Downloads</span>
     </button>
-    <a href="/logout" class="btn" title="Abmelden" style="padding:7px 10px">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    <button class="btn btn-icon" id="btn-theme" onclick="toggleTheme()" title="Hell/Dunkel umschalten" aria-label="Hell/Dunkel umschalten">
+      <svg class="icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <a href="/logout" class="btn btn-icon" title="Abmelden" aria-label="Abmelden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
     </a>
   </div>
 </header>
 
 <main>
   <!-- Tab navigation -->
-  <div class="tab-nav">
-    <button class="tab-btn active" id="tab-btn-scan" onclick="switchTab('scan')">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  <div class="tab-nav" role="tablist">
+    <button class="tab-btn active" id="tab-btn-scan" role="tab" onclick="switchTab('scan')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       Downloads
       <span class="tab-badge" id="tab-badge-scan">0</span>
     </button>
-    <button class="tab-btn" id="tab-btn-history" onclick="switchTab('history')">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <button class="tab-btn" id="tab-btn-history" role="tab" onclick="switchTab('history')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       Historie
       <span class="tab-badge" id="tab-badge-history">—</span>
     </button>
@@ -728,19 +728,20 @@
       <p>Scan starten um Downloads zu erkennen.</p>
     </div>
 
-    <div id="results-section" style="display:none">
+    <div id="results-section" hidden>
       <div class="toolbar">
-        <button class="btn" onclick="selectAll(true)" style="font-size:12px;padding:5px 10px">Alle wählen</button>
-        <button class="btn" onclick="selectAll(false)" style="font-size:12px;padding:5px 10px">Keine</button>
+        <button class="btn btn-sm" onclick="selectAll(true)">Alle wählen</button>
+        <button class="btn btn-sm" onclick="selectAll(false)">Keine</button>
         <span class="toolbar-label" id="toolbar-label"></span>
       </div>
       <div class="stats-bar" id="stats-bar"></div>
+      <datalist id="dl-series"></datalist>
       <div class="items-list" id="items-list"></div>
     </div>
   </div>
 
   <!-- History tab -->
-  <div id="tab-history" style="display:none">
+  <div id="tab-history" hidden>
     <div class="hist-toolbar">
       <div class="hist-filter">
         <button class="hist-filter-btn active" onclick="setHistFilter('all', this)">Alle</button>
@@ -748,9 +749,9 @@
         <button class="hist-filter-btn" onclick="setHistFilter('series', this)">📺 Serien</button>
         <button class="hist-filter-btn" onclick="setHistFilter('error', this)">⚠ Fehler</button>
       </div>
-      <input type="text" class="hist-search" placeholder="Suchen…" oninput="renderHistory()" id="hist-search">
-      <button class="btn" onclick="loadHistory()" style="margin-left:auto;font-size:12px;padding:5px 10px">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+      <input type="text" class="hist-search" placeholder="Suchen…" oninput="renderHistory()" id="hist-search" aria-label="Historie durchsuchen">
+      <button class="btn btn-sm hist-refresh" onclick="loadHistory()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
         Aktualisieren
       </button>
     </div>
@@ -761,47 +762,48 @@
             <th>Zeitpunkt</th>
             <th>Release</th>
             <th>Typ</th>
+            <th>Grösse</th>
             <th>Ziel</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="hist-tbody">
-          <tr><td colspan="5" class="hist-empty">Noch keine Einträge.</td></tr>
+          <tr><td colspan="6" class="hist-empty">Noch keine Einträge.</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </main>
 
-<div class="action-bar" id="action-bar" style="display:none">
+<div class="action-bar" id="action-bar" hidden>
   <div class="action-bar-info" id="action-info"></div>
-  <div style="display:flex;gap:8px">
+  <div class="action-bar-buttons">
     <button class="btn" onclick="doScan()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
       Neu scannen
     </button>
     <button class="btn btn-success" id="btn-move" onclick="confirmMove()">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
       Verschieben
     </button>
   </div>
 </div>
 
-<div id="toast-container"></div>
+<div id="toast-container" aria-live="polite"></div>
 
-<div id="confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(13,15,18,0.88);z-index:250;align-items:center;justify-content:center;">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 32px;min-width:340px;max-width:90vw;display:flex;flex-direction:column;gap:18px;">
-    <h3 id="confirm-title" style="font-size:15px;font-weight:600;color:#fff"></h3>
-    <p id="confirm-body" style="font-size:13px;color:var(--muted);line-height:1.6"></p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
+<div id="confirm-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div class="modal-box">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-body" class="modal-text"></p>
+    <div class="modal-buttons">
       <button class="btn" onclick="confirmResolve(false)">Abbrechen</button>
       <button class="btn btn-primary" id="confirm-ok-btn" onclick="confirmResolve(true)">Bestätigen</button>
     </div>
   </div>
 </div>
 
-<div id="progress-overlay">
-  <div class="progress-box">
+<div id="progress-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="prog-title">
+  <div class="modal-box">
     <div class="prog-header">
       <span class="spinner"></span>
       <h3 id="prog-title">Verschiebe Dateien…</h3>
@@ -851,76 +853,133 @@
       </div>
     </div>
 
-    <div class="prog-errors" id="prog-errors" style="display:none"></div>
+    <div class="prog-errors" id="prog-errors" hidden></div>
 
-    <button class="btn btn-primary" id="prog-close-btn" onclick="closeProgressOverlay()"
-      style="display:none;width:100%;justify-content:center;margin-top:4px">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    <button class="btn btn-primary" id="prog-close-btn" onclick="closeProgressOverlay()" hidden>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
       Schliessen
     </button>
   </div>
 </div>
 
 <script>
+// Server-side config values for building destination paths
+const MOVIES_DIR = {{ config.movies_dir | tojson }};
+const SERIES_DIR = {{ config.series_dir | tojson }};
+
 // ── State ──────────────────────────────────────────────────────────────────────
+// Every item gets a numeric key `_k`. Only that key ever ends up in the DOM —
+// file names are untrusted (they come from downloads) and must never be
+// interpolated into attributes or inline handlers.
 let items = [];          // raw data from server
-let cardState = {};      // per-item: { selected, expanded, type, seriesName, season, destDir }
+let cardState = {};      // per key: { selected, expanded, type, seriesName, season, movieName, destDir }
+let knownSeries = [];    // all series folders on the NAS (for autocomplete)
+let _nextKey = 1;
+let _scanSource = null;
+let _selectedForMove = [];
+
+const SCAN_BTN_HTML = document.getElementById('btn-scan').innerHTML;
+
+function itemByKey(k) { return items.find(i => i._k === k); }
+function getCard(k) { return document.getElementById('card-' + k); }
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function currentTheme() {
+  const t = document.documentElement.dataset.theme;
+  if (t) return t;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function syncThemeButton() {
+  document.getElementById('btn-theme').classList.toggle('theme-dark', currentTheme() === 'dark');
+}
+
+function toggleTheme() {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('fm-theme', next); } catch (e) { /* private mode */ }
+  syncThemeButton();
+}
+
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', syncThemeButton);
+
+// ── API helper ────────────────────────────────────────────────────────────────
+async function api(url, body) {
+  const opts = body === undefined ? {} : {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Nicht angemeldet');
+  }
+  let data;
+  try { data = await r.json(); } catch { throw new Error(`HTTP ${r.status}`); }
+  if (!data.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
-async function doScan() {
+function setScanBusy(busy) {
   const btn = document.getElementById('btn-scan');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Scanne…';
-  document.getElementById('results-section').style.display = 'none';
-  document.getElementById('action-bar').style.display = 'none';
-  document.getElementById('state-empty').style.display = 'none';
+  btn.disabled = busy;
+  btn.innerHTML = busy ? '<span class="spinner"></span> <span class="btn-label">Scanne…</span>' : SCAN_BTN_HTML;
+}
 
-  // Show scan status panel
+async function doScan() {
+  setScanBusy(true);
+  document.getElementById('results-section').hidden = true;
+  document.getElementById('action-bar').hidden = true;
+  document.getElementById('state-empty').hidden = true;
   showScanStatus();
 
   try {
-    const r = await fetch('/api/scan', { method: 'POST' });
-    const data = await r.json();
-    if (!data.ok && data.error) throw new Error(data.error);
+    await api('/api/scan', {});
   } catch (e) {
     hideScanStatus();
     toast('Scan Fehler: ' + e.message, 'error');
-    document.getElementById('state-empty').style.display = 'block';
-    btn.disabled = false;
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
+    document.getElementById('state-empty').hidden = false;
+    setScanBusy(false);
     return;
   }
+  listenScan();
+}
 
-  // Listen to SSE progress
-  const es = new EventSource('/api/scan-progress');
+function listenScan() {
+  if (_scanSource) _scanSource.close();
+  const es = _scanSource = new EventSource('/api/scan-progress');
   es.onmessage = (event) => {
     const p = JSON.parse(event.data);
-    updateScanStatus(p);
-
-    if (p.done && p.items !== undefined) {
-      es.close();
-      setTimeout(() => {
-        hideScanStatus();
-        if (p.error) {
-          toast('Scan Fehler: ' + p.error, 'error');
-          document.getElementById('state-empty').style.display = 'block';
-        } else {
-          items = p.items;
-          buildUI();
-          document.getElementById('tab-badge-scan').textContent = items.length;
-          toast(`${items.length} Einträge gefunden`, 'info');
-        }
-        btn.disabled = false;
-        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
-      }, 400);
+    if (p.items === undefined) {
+      updateScanStatus(p);
+      return;
     }
+    // Final message
+    es.close();
+    _scanSource = null;
+    setTimeout(() => {
+      hideScanStatus();
+      setScanBusy(false);
+      if (p.error) {
+        toast('Scan Fehler: ' + p.error, 'error', 8000);
+        document.getElementById('state-empty').hidden = false;
+        return;
+      }
+      items = p.items;
+      knownSeries = p.known_series || [];
+      buildUI();
+      toast(`${items.length} Einträge gefunden`, 'info');
+    }, 400);
   };
   es.onerror = () => {
     es.close();
+    _scanSource = null;
     hideScanStatus();
     toast('Scan-Verbindung unterbrochen', 'error');
-    btn.disabled = false;
-    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Scan Downloads`;
+    document.getElementById('state-empty').hidden = items.length > 0;
+    setScanBusy(false);
   };
 }
 
@@ -934,7 +993,7 @@ function showScanStatus() {
     el.innerHTML = `
       <div class="scan-status-icon">
         <div class="scan-pulse"></div>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </div>
       <div class="scan-status-text">
         <div class="scan-status-phase" id="scan-phase">Initialisiere…</div>
@@ -944,41 +1003,40 @@ function showScanStatus() {
     `;
     document.getElementById('tab-scan').prepend(el);
   }
-  el.style.display = 'flex';
-  el.classList.remove('scan-done');
+  document.getElementById('scan-phase').textContent = 'Initialisiere…';
+  document.getElementById('scan-current').textContent = '';
+  document.getElementById('scan-counter').textContent = '';
+  el.hidden = false;
+  el.classList.remove('scan-done', 'scan-ok');
 }
 
 function hideScanStatus() {
   const el = document.getElementById('scan-status-panel');
   if (el) {
     el.classList.add('scan-done');
-    setTimeout(() => { el.style.display = 'none'; }, 400);
+    setTimeout(() => { el.hidden = true; }, 400);
   }
 }
 
+const SCAN_PHASES = {
+  init: 'Lese Download-Verzeichnis…',
+  library: 'Lade Serien-Bibliothek…',
+  scanning: 'Analysiere Releases…',
+  done: 'Scan abgeschlossen',
+  error: 'Fehler beim Scan',
+};
+
 function updateScanStatus(p) {
-  const phase   = document.getElementById('scan-phase');
-  const current = document.getElementById('scan-current');
+  if (SCAN_PHASES[p.phase]) document.getElementById('scan-phase').textContent = SCAN_PHASES[p.phase];
+  document.getElementById('scan-current').textContent = p.current || '';
+
   const counter = document.getElementById('scan-counter');
-
-  if (p.phase === 'init')     phase.textContent = 'Lese Download-Verzeichnis…';
-  else if (p.phase === 'library') phase.textContent = 'Lade Serien-Bibliothek…';
-  else if (p.phase === 'scanning') phase.textContent = 'Analysiere Releases…';
-  else if (p.phase === 'done')    phase.textContent = 'Scan abgeschlossen';
-  else if (p.phase === 'error')   phase.textContent = 'Fehler beim Scan';
-
-  current.textContent = p.current || '';
-
   if (p.found > 0) {
     counter.textContent = p.found;
     counter.title = `${p.found} Einträge gefunden`;
   }
-
   if (p.phase === 'done') {
-    const panel = document.getElementById('scan-status-panel');
-    if (panel) panel.style.borderColor = 'var(--green)';
-    const icon = panel?.querySelector('.scan-pulse');
-    if (icon) icon.style.background = 'var(--green)';
+    document.getElementById('scan-status-panel')?.classList.add('scan-ok');
   }
 }
 
@@ -986,44 +1044,46 @@ function updateScanStatus(p) {
 function buildUI() {
   cardState = {};
   items.forEach(item => {
+    item._k = _nextKey++;
     const s = item.suggestion;
-    cardState[item.id] = {
-      selected: !item.dest_exists && !item.suggestion.duplicate_path,  // deselect if dest exists or duplicate found
-      expanded: s.confidence !== 'high' || s.match_auto === false,
+    cardState[item._k] = {
+      // deselect if dest exists, a duplicate was found or the download is still running
+      selected: !item.dest_exists && !s.duplicate_path && !item.incomplete,
+      expanded: s.confidence !== 'high' || s.match_auto === false || item.incomplete,
       type: s.type,
-      seriesName: s.series_name || '',        // display name (may have spaces)
-      seriesFolderName: _folderNameFromDest(s.dest_dir, s.type), // actual folder on NAS
+      seriesName: s.series_name || '',
       season: s.season || 1,
+      movieName: item.release_name,
       destDir: s.dest_dir || '',              // authoritative from server
-      destExists: item.dest_exists,
     };
   });
 
-  renderAll();
+  document.getElementById('dl-series').innerHTML =
+    knownSeries.map(n => `<option value="${escHtml(n)}">`).join('');
 
-  document.getElementById('results-section').style.display = 'block';
-  document.getElementById('action-bar').style.display = 'flex';
-  updateActionBar();
-}
-
-function renderAll() {
   renderStats();
   renderItems();
-  updateActionBar();
+
+  document.getElementById('tab-badge-scan').textContent = items.length;
+  document.getElementById('state-empty').hidden = items.length > 0;
+  document.getElementById('results-section').hidden = items.length === 0;
+  document.getElementById('action-bar').hidden = items.length === 0 || _currentTab !== 'scan';
+  updateSelectionInfo();
 }
 
 function renderStats() {
-  const movies  = items.filter(i => i.suggestion.type === 'movie').length;
-  const series  = items.filter(i => i.suggestion.type === 'series').length;
-  const unknown = items.filter(i => i.suggestion.type === 'unknown').length;
+  const count = t => items.filter(i => i.suggestion.type === t).length;
+  const unknown = count('unknown');
+  const incomplete = items.filter(i => i.incomplete).length;
   const totalBytes = items.reduce((a, i) => a + (i.size_bytes || 0), 0);
 
   document.getElementById('stats-bar').innerHTML = `
     <div class="stat"><span>📦</span> <strong>${items.length}</strong> Einträge</div>
     <div class="stat-sep">|</div>
-    <div class="stat"><span>🎬</span> <strong>${movies}</strong> Filme</div>
-    <div class="stat"><span>📺</span> <strong>${series}</strong> Serien</div>
+    <div class="stat"><span>🎬</span> <strong>${count('movie')}</strong> Filme</div>
+    <div class="stat"><span>📺</span> <strong>${count('series')}</strong> Serien</div>
     ${unknown ? `<div class="stat"><span>❓</span> <strong>${unknown}</strong> Unbekannt</div>` : ''}
+    ${incomplete ? `<div class="stat"><span>⏳</span> <strong>${incomplete}</strong> unvollständig</div>` : ''}
     <div class="stat-sep">|</div>
     <div class="stat"><span>💾</span> <strong>${fmtSize(totalBytes)}</strong></div>
   `;
@@ -1032,50 +1092,49 @@ function renderStats() {
 function renderItems() {
   const list = document.getElementById('items-list');
   list.innerHTML = '';
-  items.forEach(item => {
-    list.appendChild(buildCard(item));
-  });
-  updateToolbarLabel();
+  items.forEach(item => list.appendChild(buildCard(item)));
 }
 
+const TYPE_BADGE = {
+  movie:   ['badge-movie', 'Film'],
+  series:  ['badge-series', 'Serie'],
+  unknown: ['badge-unknown', '?'],
+};
+
 function buildCard(item) {
-  const id    = item.id;
-  const cs    = cardState[id];
-  const s     = item.suggestion;
+  const cs = cardState[item._k];
+  const s  = item.suggestion;
 
   const card = document.createElement('div');
-  card.className = `item-card ${cs.selected ? 'selected' : ''} ${cs.expanded ? 'expanded' : ''}`;
-  card.id = 'card-' + btoa(unescape(encodeURIComponent(id))).replace(/[^a-z0-9]/gi, '');
+  card.className = 'item-card';
+  card.classList.toggle('selected', cs.selected);
+  card.classList.toggle('skipped', !cs.selected);
+  card.classList.toggle('expanded', cs.expanded);
+  card.id = 'card-' + item._k;
+  card.dataset.key = item._k;
 
-  const badgeClass = { movie: 'badge-movie', series: 'badge-series', unknown: 'badge-unknown' }[cs.type] || 'badge-unknown';
-  const badgeLabel = { movie: 'Film', series: 'Serie', unknown: '?' }[cs.type] || '?';
-  const confClass  = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' }[s.confidence] || 'conf-low';
+  const [badgeClass, badgeLabel] = TYPE_BADGE[cs.type] || TYPE_BADGE.unknown;
+  const confClass = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' }[s.confidence] || 'conf-low';
 
   card.innerHTML = `
-    <div class="item-header" onclick="toggleCard('${escId(id)}', event)">
-      <div class="item-checkbox">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+    <div class="item-header" data-action="toggle" role="button" tabindex="0" aria-expanded="${cs.expanded}">
+      <div class="item-checkbox" data-action="select" role="checkbox" aria-checked="${cs.selected}" aria-label="Auswählen">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="item-type-badge ${badgeClass}">${badgeLabel}</div>
-      <div class="confidence-dot ${confClass}" title="Erkennungssicherheit: ${s.confidence}"></div>
+      <div class="confidence-dot ${confClass}" title="Erkennungssicherheit: ${escHtml(s.confidence)}"></div>
       <div class="item-name" title="${escHtml(item.release_name)}">${escHtml(item.release_name)}</div>
+      ${item.incomplete ? '<div class="item-type-badge badge-warn" title="Enthält .part/.crdownload-Dateien — Download läuft evtl. noch">⏳ unvollständig</div>' : ''}
       <div class="item-size">${fmtSize(item.size_bytes)}</div>
     </div>
-
-    <div class="item-body">
-      ${buildBody(item, cs)}
-    </div>
+    <div class="item-body">${buildBody(item, cs)}</div>
   `;
-
   return card;
 }
 
 function buildBody(item, cs) {
   const s = item.suggestion;
-  let html = '';
-
-  // Source info
-  html += `
+  let html = `
     <div class="field-row">
       <div class="field-label">Quelle</div>
       <div class="field-value source">${escHtml(item.source_top)}</div>
@@ -1085,16 +1144,20 @@ function buildBody(item, cs) {
     html += `
       <div class="field-row">
         <div class="field-label"></div>
-        <div class="wrapper-note">↳ Wrapper erkannt, Release-Ordner: <strong>${escHtml(item.release_name)}</strong></div>
+        <div class="wrapper-note">↳ Wrapper übersprungen, Release: <code>${escHtml(item.wrapper_path || item.release_name)}</code>
+          ${item.shared_wrapper ? ' · Wrapper enthält mehrere Releases' : ''}</div>
       </div>`;
   }
 
-  // Type selector
+  if (item.incomplete) {
+    html += `<div class="note">⏳ Enthält unfertige Dateien (.part, .crdownload …) — der Download läuft vermutlich noch.</div>`;
+  }
+
   html += `
     <div class="field-row">
       <div class="field-label">Typ</div>
       <div>
-        <select onchange="onTypeChange('${escId(item.id)}', this.value)" style="width:140px">
+        <select class="select-type" data-action="type" aria-label="Typ">
           <option value="movie"   ${cs.type === 'movie'   ? 'selected' : ''}>🎬 Film</option>
           <option value="series"  ${cs.type === 'series'  ? 'selected' : ''}>📺 Serie</option>
           <option value="unknown" ${cs.type === 'unknown' ? 'selected' : ''}>❓ Unbekannt</option>
@@ -1102,525 +1165,471 @@ function buildBody(item, cs) {
       </div>
     </div>`;
 
-  // Series-specific fields
   if (cs.type === 'series') {
-    const knownSeries = s.known_series || [];
-    const matchAuto   = s.match_auto;
-    const matchScore  = s.match_score || 0;
-    const matchExisting = s.matched_existing;
-    const seasonExists  = s.season_exists;
-    const existingSeasons = s.existing_seasons || [];
-
-    // Match status badge
-    let matchBadge = '';
-    if (matchAuto && matchExisting) {
-      matchBadge = `<span class="match-badge match-auto" title="Automatisch gematcht (${Math.round(matchScore*100)}%)">✓ in Bibliothek</span>`;
-    } else if (matchExisting) {
-      matchBadge = `<span class="match-badge match-hint" title="Möglicher Treffer (${Math.round(matchScore*100)}%) — bitte prüfen">~ ${escHtml(matchExisting)}</span>`;
+    let matchBadge;
+    const pct = Math.round((s.match_score || 0) * 100);
+    if (s.match_auto && s.matched_existing) {
+      matchBadge = `<span class="match-badge match-auto" title="Automatisch gematcht (${pct}%)">✓ in Bibliothek</span>`;
+    } else if (s.matched_existing) {
+      matchBadge = `<span class="match-badge match-hint" title="Möglicher Treffer (${pct}%) — bitte prüfen">~ ${escHtml(s.matched_existing)}</span>`;
     } else {
       matchBadge = `<span class="match-badge match-new">+ Neu</span>`;
     }
 
-    // Datalist for autocomplete
-    const dlId = 'dl-' + btoa(unescape(encodeURIComponent(item.id))).replace(/[^a-z0-9]/gi,'');
-    const options = knownSeries.map(n => `<option value="${escHtml(n)}">`).join('');
+    const existingSeasons = s.existing_seasons || [];
+    const seasonStr = 'S' + String(cs.season).padStart(2, '0');
+    let seasonBadge = '';
+    if (existingSeasons.includes(seasonStr)) {
+      seasonBadge = `<span class="season-badge season-exists" title="Staffel existiert bereits — Episoden werden hinzugefügt">${seasonStr} vorhanden</span>`;
+    } else if (existingSeasons.length > 0) {
+      seasonBadge = `<span class="season-badge season-new">Neue Staffel · Vorhanden: ${escHtml(existingSeasons.join(', '))}</span>`;
+    }
 
     html += `
-      <datalist id="${dlId}">${options}</datalist>
       <div class="field-row">
         <div class="field-label">Serie</div>
         <div class="edit-group">
-          <div class="edit-row" style="gap:8px;align-items:center">
-            <input type="text" list="${dlId}" value="${escHtml(cs.seriesName)}" placeholder="Serienname"
-              style="flex:1"
-              oninput="onSeriesName('${escId(item.id)}', this.value)">
+          <div class="edit-row">
+            <input type="text" class="input-grow" list="dl-series" value="${escHtml(cs.seriesName)}"
+              placeholder="Serienname" data-action="series-name" aria-label="Serienname">
             ${matchBadge}
           </div>
           <div class="edit-row">
             <span class="edit-label">Staffel</span>
-            <input type="number" value="${cs.season}" min="1" max="99" style="width:72px"
-              oninput="onSeason('${escId(item.id)}', this.value)">
-            ${seasonExists
-              ? `<span class="season-badge season-exists" title="Staffel existiert bereits — Episoden werden hinzugefügt">S${String(cs.season).padStart(2,'0')} vorhanden</span>`
-              : existingSeasons.length > 0
-                ? `<span class="season-badge season-new">Neue Staffel · Vorhanden: ${existingSeasons.join(', ')}</span>`
-                : ''}
+            <input type="number" value="${cs.season}" min="0" max="99" data-action="season" aria-label="Staffel">
+            ${seasonBadge}
           </div>
         </div>
       </div>`;
 
     if (s.video_files && s.video_files.length > 0) {
-      const fileList = s.video_files.map(f => `<div>${escHtml(Path_basename(f))}</div>`).join('');
       html += `
         <div class="field-row">
           <div class="field-label">Dateien</div>
-          <div class="field-value">${fileList}</div>
+          <div class="field-value">${s.video_files.map(f => `<div>${escHtml(basename(f))}</div>`).join('')}</div>
         </div>`;
     }
+  } else {
+    html += `
+      <div class="field-row">
+        <div class="field-label">Zielname</div>
+        <div><input type="text" value="${escHtml(cs.movieName)}" data-action="movie-name" aria-label="Zielname"></div>
+      </div>`;
   }
 
-  // Destination preview
-  const dest = buildDestPreview(item.id);
   const isSeries = cs.type === 'series';
-  // For series: season folder existing is OK (adding episodes), only warn if dest is a file conflict
-  const warnClass = (!isSeries && item.dest_exists) ? 'warn' : '';
-  const warnNote  = (!isSeries && item.dest_exists) ? ' ⚠ Ziel existiert bereits' : '';
-  const infoNote  = (isSeries && item.suggestion.season_exists) ? ' · Staffel vorhanden, Episoden werden ergänzt' : '';
+  const warn = !isSeries && item.dest_exists;
   html += `
     <div class="field-row">
       <div class="field-label">Ziel</div>
       <div>
-        <div class="dest-preview ${warnClass}" id="dest-preview-${escId(item.id)}">${escHtml(dest)}${warnNote}${infoNote}</div>
+        <div class="dest-preview ${warn ? 'warn' : ''}" data-role="dest"></div>
       </div>
     </div>`;
 
-  // Duplicate warning for movies
   if (cs.type === 'movie' && s.duplicate_path) {
-    const dupName = s.duplicate_path.split('/').pop();
     html += `
-      <div class="duplicate-note">
-        <span>⚠ Anderes Release bereits vorhanden: <code>${escHtml(dupName)}</code></span>
-        <button class="btn" style="font-size:11px;padding:3px 10px;flex-shrink:0"
-          onclick="replaceNas('${escId(item.id)}', '${escId(s.duplicate_path)}', event)">
-          Altes ersetzen
-        </button>
+      <div class="note">
+        <span>⚠ Anderes Release bereits vorhanden: <code>${escHtml(basename(s.duplicate_path))}</code></span>
+        <button class="btn btn-xs" data-action="replace">Altes ersetzen</button>
       </div>`;
   }
 
-  // Actions
   html += `
     <div class="item-actions">
-      <button class="btn btn-danger" onclick="deleteCard('${escId(item.id)}', event)" title="Aus Download-Verzeichnis löschen">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      <button class="btn btn-danger" data-action="delete" title="Aus Download-Verzeichnis löschen">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
         Löschen
       </button>
-      <button class="btn" onclick="skipCard('${escId(item.id)}', event)">Überspringen</button>
+      <button class="btn" data-action="skip">Überspringen</button>
     </div>`;
 
   return html;
 }
 
-function Path_basename(p) {
-  return p.replace(/\\/g, '/').split('/').pop();
+function renderBody(k) {
+  const card = getCard(k);
+  card.querySelector('.item-body').innerHTML = buildBody(itemByKey(k), cardState[k]);
+  updateDestPreview(k);
 }
 
-function buildDestPreview(id) {
-  const cs   = cardState[id];
-  return cs.destDir || '—';
-}
-
-// ── Card interactions ─────────────────────────────────────────────────────────
-function toggleCard(id, event) {
-  // If the click came from the checkbox, let the dedicated handler deal with it
-  if (event && event.target.closest('.item-checkbox')) return;
-
-  const cs = cardState[id];
-  cs.expanded = !cs.expanded;
-  const card = getCard(id);
-  card.classList.toggle('expanded', cs.expanded);
-}
-
-function getCard(id) {
-  return document.getElementById('card-' + btoa(unescape(encodeURIComponent(id))).replace(/[^a-z0-9]/gi, ''));
-}
-
-// Dedicated checkbox toggle — handles select/deselect and skipped state
-document.addEventListener('click', function(e) {
-  const checkbox = e.target.closest('.item-checkbox');
-  if (!checkbox) return;
-
-  e.stopPropagation();
-  const card = checkbox.closest('.item-card');
-  const id = getIdFromCard(card);
-  if (!id) return;
-
-  // Don't toggle done cards
-  if (card.classList.contains('done')) return;
-
-  cardState[id].selected = !cardState[id].selected;
-  card.classList.toggle('selected', cardState[id].selected);
-  // Remove skipped when re-activating
-  if (cardState[id].selected) {
-    card.classList.remove('skipped');
-  } else {
-    card.classList.add('skipped');
+function updateDestPreview(k) {
+  const el = getCard(k)?.querySelector('[data-role="dest"]');
+  if (!el) return;
+  const cs = cardState[k];
+  const item = itemByKey(k);
+  let text = cs.destDir || '—';
+  if (cs.type !== 'series' && item.dest_exists && cs.destDir === item.suggestion.dest_dir) {
+    text += ' ⚠ Ziel existiert bereits';
   }
-  updateActionBar();
-  updateToolbarLabel();
+  if (cs.type === 'series' && item.suggestion.season_exists) {
+    text += ' · Staffel vorhanden, Episoden werden ergänzt';
+  }
+  el.textContent = text;
+}
+
+// ── Card interactions (event delegation) ──────────────────────────────────────
+const itemsList = document.getElementById('items-list');
+
+itemsList.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  const card = e.target.closest('.item-card');
+  if (!el || !card) return;
+  const k = Number(card.dataset.key);
+  switch (el.dataset.action) {
+    case 'select':  e.stopPropagation(); toggleSelect(k); break;
+    case 'toggle':  toggleExpand(k); break;
+    case 'skip':    setSelected(k, false); break;
+    case 'delete':  deleteItem(k); break;
+    case 'replace': replaceNas(k); break;
+  }
 });
 
-function getIdFromCard(card) {
-  for (const id of Object.keys(cardState)) {
-    const encoded = btoa(unescape(encodeURIComponent(id))).replace(/[^a-z0-9]/gi, '');
-    if (card.id === 'card-' + encoded) return id;
+itemsList.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.action === 'toggle') {
+    e.preventDefault();
+    toggleExpand(Number(e.target.closest('.item-card').dataset.key));
   }
-  return null;
+});
+
+itemsList.addEventListener('input', (e) => {
+  const card = e.target.closest('.item-card');
+  if (!card) return;
+  const k = Number(card.dataset.key);
+  const cs = cardState[k];
+  switch (e.target.dataset.action) {
+    case 'series-name': cs.seriesName = e.target.value; break;
+    case 'season':      cs.season = Math.max(0, parseInt(e.target.value, 10) || 0); break;
+    case 'movie-name':  cs.movieName = e.target.value; break;
+    default: return;
+  }
+  rebuildDestDir(k);
+  updateDestPreview(k);
+});
+
+itemsList.addEventListener('change', (e) => {
+  if (e.target.dataset.action !== 'type') return;
+  const k = Number(e.target.closest('.item-card').dataset.key);
+  cardState[k].type = e.target.value;
+  const card = getCard(k);
+  const [badgeClass, badgeLabel] = TYPE_BADGE[e.target.value] || TYPE_BADGE.unknown;
+  const badge = card.querySelector('.item-header .item-type-badge');
+  badge.className = 'item-type-badge ' + badgeClass;
+  badge.textContent = badgeLabel;
+  rebuildDestDir(k);
+  renderBody(k);
+});
+
+function toggleExpand(k) {
+  const cs = cardState[k];
+  cs.expanded = !cs.expanded;
+  const card = getCard(k);
+  card.classList.toggle('expanded', cs.expanded);
+  card.querySelector('.item-header').setAttribute('aria-expanded', cs.expanded);
 }
 
-function skipCard(id, e) {
-  e && e.stopPropagation();
-  cardState[id].selected = false;
-  const card = getCard(id);
-  card.classList.remove('selected');
-  card.classList.add('skipped');
-  updateActionBar();
-  updateToolbarLabel();
+function setSelected(k, state) {
+  const card = getCard(k);
+  if (!card || card.classList.contains('done')) return;
+  cardState[k].selected = state;
+  card.classList.toggle('selected', state);
+  card.classList.toggle('skipped', !state);
+  card.querySelector('.item-checkbox').setAttribute('aria-checked', state);
+  updateSelectionInfo();
 }
 
-async function deleteCard(id, e) {
-  e && e.stopPropagation();
-  const item = items.find(i => i.id === id);
+function toggleSelect(k) { setSelected(k, !cardState[k].selected); }
+
+function selectAll(state) {
+  items.forEach(item => setSelected(item._k, state));
+}
+
+async function deleteItem(k) {
+  const item = itemByKey(k);
   if (!item) return;
 
+  // If the wrapper holds other releases, only delete this release
+  const path = item.shared_wrapper ? item.source_release : item.source_top;
   const confirmed = await showConfirm(
     `"${item.release_name}" löschen?`,
-    `Quelle: ${item.source_top}\n\nDies kann nicht rückgängig gemacht werden.`,
+    `Löscht: ${path}\n\nDies kann nicht rückgängig gemacht werden.`,
     'Löschen'
   );
   if (!confirmed) return;
 
   try {
-    const r = await fetch('/api/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_top: item.source_top }),
-    });
-    const data = await r.json();
-    if (!data.ok) throw new Error(data.error || 'Fehler');
-
-    // Remove card from UI
-    const card = getCard(id);
-    card.style.transition = 'opacity 0.3s, max-height 0.3s';
-    card.style.opacity = '0';
-    card.style.overflow = 'hidden';
-    card.style.maxHeight = card.offsetHeight + 'px';
-    setTimeout(() => { card.style.maxHeight = '0'; card.style.marginBottom = '0'; }, 300);
-    setTimeout(() => { card.remove(); }, 600);
-
-    items = items.filter(i => i.id !== id);
-    delete cardState[id];
-    document.getElementById('tab-badge-scan').textContent = items.length;
-    updateActionBar();
-    updateToolbarLabel();
-    toast(`"${item.release_name}" gelöscht`, 'info');
-  } catch (err) {
-    toast('Löschen fehlgeschlagen: ' + err.message, 'error');
-  }
-}
-
-function onTypeChange(id, newType) {
-  cardState[id].type = newType;
-  rebuildDestDir(id);
-  // Re-render the body
-  const item = items.find(i => i.id === id);
-  const card = getCard(id);
-  const body = card.querySelector('.item-body');
-  body.innerHTML = buildBody(item, cardState[id]);
-  updateDestPreview(id);
-}
-
-function onSeriesName(id, val) {
-  cardState[id].seriesName = val;
-  cardState[id].seriesFolderName = val;  // user typed → use as-is for path
-  rebuildDestDir(id);
-  updateDestPreview(id);
-}
-
-function onSeason(id, val) {
-  cardState[id].season = parseInt(val) || 1;
-  rebuildDestDir(id);
-  updateDestPreview(id);
-}
-
-function rebuildDestDir(id) {
-  const cs   = cardState[id];
-  const item = items.find(i => i.id === id);
-  const s    = item.suggestion;
-
-  if (cs.type === 'series') {
-    // Use seriesFolderName (exact NAS folder name) not seriesName (display name)
-    const name   = cs.seriesFolderName || cs.seriesName || 'Unbekannte Serie';
-    const season = `S${String(cs.season || 1).padStart(2, '0')}`;
-    cs.destDir = (window._seriesDir || '/mnt/Serien') + '/' + name + '/' + season;
-  } else {
-    const title     = s.title || item.release_name;
-    const firstChar = getFirstChar(title);
-    const relName   = item.release_name;
-    cs.destDir = (window._moviesDir || '/mnt/Filme') + '/' + firstChar + '/' + relName;
-  }
-}
-
-// Extract the series folder name from the server-provided dest_dir
-// e.g. "/mnt/Serien/The.Boys/S05" → "The.Boys"
-function _folderNameFromDest(destDir, type) {
-  if (type !== 'series' || !destDir) return '';
-  const parts = destDir.replace(/\\/g, '/').split('/');
-  // dest_dir = seriesDir / folderName / seasonStr  → index -2
-  return parts.length >= 2 ? parts[parts.length - 2] : '';
-}
-
-function getFirstChar(name) {
-  const clean = name.replace(/^(The|Der|Die|Das|Ein|Eine)\s+/i, '');
-  const ch = clean[0] || '#';
-  return /[a-zA-Z]/.test(ch) ? ch.toUpperCase() : '#';
-}
-
-function updateDestPreview(id) {
-  const el = document.getElementById('dest-preview-' + id);
-  if (el) el.textContent = buildDestPreview(id);
-}
-
-// ── Select all / none ─────────────────────────────────────────────────────────
-function selectAll(state) {
-  items.forEach(item => {
-    cardState[item.id].selected = state;
-    const card = getCard(item.id);
-    card.classList.toggle('selected', state);
-    card.classList.toggle('skipped', !state);
-  });
-  updateActionBar();
-  updateToolbarLabel();
-}
-
-function updateToolbarLabel() {
-  const sel = Object.values(cardState).filter(c => c.selected).length;
-  document.getElementById('toolbar-label').textContent = `${sel} von ${items.length} ausgewählt`;
-}
-
-function updateActionBar() {
-  const selected = items.filter(i => cardState[i.id]?.selected);
-  const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
-  document.getElementById('action-info').innerHTML =
-    `<strong>${selected.length}</strong> ausgewählt · <strong>${fmtSize(totalBytes)}</strong>`;
-  document.getElementById('btn-move').disabled = selected.length === 0;
-}
-
-// ── Native confirm modal ──────────────────────────────────────────────────────
-let _confirmResolve = null;
-
-function showConfirm(title, body, okLabel = 'Bestätigen') {
-  document.getElementById('confirm-title').textContent = title;
-  document.getElementById('confirm-body').textContent  = body;
-  document.getElementById('confirm-ok-btn').textContent = okLabel;
-  const overlay = document.getElementById('confirm-overlay');
-  overlay.style.display = 'flex';
-  return new Promise(resolve => { _confirmResolve = resolve; });
-}
-
-function confirmResolve(result) {
-  document.getElementById('confirm-overlay').style.display = 'none';
-  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
-}
-let _selectedForMove = [];
-
-async function replaceNas(itemId, duplicatePath, e) {
-  e && e.stopPropagation();
-  const item = items.find(i => i.id === itemId);
-  if (!item) return;
-
-  const dupName = duplicatePath.split('/').pop();
-  const confirmed = await showConfirm(
-    'Altes Release ersetzen?',
-    `Löscht:\n${dupName}\n\nVerschiebt dann:\n${item.release_name}`,
-    'Ersetzen'
-  );
-  if (!confirmed) return;
-
-  // 1. Delete old NAS release
-  try {
-    const r = await fetch('/api/delete-nas', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: duplicatePath }),
-    });
-    const data = await r.json();
-    if (!data.ok) throw new Error(data.error);
-    toast(`"${dupName}" gelöscht`, 'info');
+    await api('/api/delete', { path });
   } catch (err) {
     toast('Löschen fehlgeschlagen: ' + err.message, 'error');
     return;
   }
 
-  // 2. Select only this item and move without second confirm
-  Object.keys(cardState).forEach(id => { cardState[id].selected = id === itemId; });
-  updateActionBar();
+  const card = getCard(k);
+  card.style.maxHeight = card.offsetHeight + 'px';
+  requestAnimationFrame(() => { card.style.opacity = '0'; card.style.maxHeight = '0'; });
+  setTimeout(() => card.remove(), 350);
+
+  // Siblings of a non-shared wrapper are gone too
+  const gone = item.shared_wrapper
+    ? (i => i._k === k)
+    : (i => i.source_top === item.source_top);
+  items.filter(gone).forEach(i => { delete cardState[i._k]; if (i._k !== k) getCard(i._k)?.remove(); });
+  items = items.filter(i => !gone(i));
+
+  document.getElementById('tab-badge-scan').textContent = items.length;
+  renderStats();
+  updateSelectionInfo();
+  toast(`"${item.release_name}" gelöscht`, 'info');
+}
+
+function sanitizeName(name) {
+  // No path separators or traversal in folder names
+  return name.replace(/[\\/]/g, ' ').replace(/^\.+/, '').trim();
+}
+
+function rebuildDestDir(k) {
+  const cs   = cardState[k];
+  const item = itemByKey(k);
+  const s    = item.suggestion;
+
+  if (cs.type === 'series') {
+    const name   = sanitizeName(cs.seriesName) || 'Unbekannte Serie';
+    const season = 'S' + String(cs.season).padStart(2, '0');
+    cs.destDir = `${SERIES_DIR}/${name}/${season}`;
+  } else {
+    const folder = sanitizeName(cs.movieName) || item.release_name;
+    // Letter is derived from the parsed title unless the user renamed the target
+    const letterSource = folder === item.release_name ? (s.title || folder) : folder;
+    cs.destDir = `${MOVIES_DIR}/${getFirstChar(letterSource)}/${folder}`;
+  }
+}
+
+// Same logic as scanner._first_letter()
+function getFirstChar(name) {
+  const clean = name.replace(/^(the|der|die|das|ein|eine|les|le|la|los|las)\s+/i, '');
+  const ch = clean.charAt(0);
+  return /\p{L}/u.test(ch) ? ch.toUpperCase() : '#';
+}
+
+function updateSelectionInfo() {
+  const selected = items.filter(i => cardState[i._k]?.selected);
+  const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
+  document.getElementById('toolbar-label').textContent = `${selected.length} von ${items.length} ausgewählt`;
+  document.getElementById('action-info').innerHTML =
+    `<strong>${selected.length}</strong> ausgewählt · <strong>${fmtSize(totalBytes)}</strong>`;
+  document.getElementById('btn-move').disabled = selected.length === 0;
+}
+
+// ── Confirm modal ─────────────────────────────────────────────────────────────
+let _confirmResolve = null;
+
+function showConfirm(title, body, okLabel = 'Bestätigen') {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-body').textContent  = body;
+  const ok = document.getElementById('confirm-ok-btn');
+  ok.textContent = okLabel;
+  document.getElementById('confirm-overlay').classList.add('active');
+  ok.focus();
+  return new Promise(resolve => { _confirmResolve = resolve; });
+}
+
+function confirmResolve(result) {
+  document.getElementById('confirm-overlay').classList.remove('active');
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _confirmResolve) confirmResolve(false);
+});
+
+// ── Move ──────────────────────────────────────────────────────────────────────
+async function replaceNas(k) {
+  const item = itemByKey(k);
+  if (!item) return;
+  const duplicatePath = item.suggestion.duplicate_path;
+
+  const confirmed = await showConfirm(
+    'Altes Release ersetzen?',
+    `Löscht:\n${basename(duplicatePath)}\n\nVerschiebt dann:\n${item.release_name}`,
+    'Ersetzen'
+  );
+  if (!confirmed) return;
+
+  try {
+    await api('/api/delete-nas', { path: duplicatePath });
+    toast(`"${basename(duplicatePath)}" gelöscht`, 'info');
+  } catch (err) {
+    toast('Löschen fehlgeschlagen: ' + err.message, 'error');
+    return;
+  }
+
+  // Select only this item and move without second confirm
+  items.forEach(i => setSelected(i._k, i._k === k));
   await confirmMove(true, duplicatePath);
 }
 
 async function confirmMove(skipConfirm = false, replacedPath = null) {
-  const selected = items.filter(i => cardState[i.id]?.selected);
+  const selected = items.filter(i => cardState[i._k]?.selected);
   if (selected.length === 0) return;
 
   if (!skipConfirm) {
     const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
+    const incomplete = selected.filter(i => i.incomplete).length;
     const confirmed = await showConfirm(
       `${selected.length} Einträge verschieben?`,
-      `${selected.length} Einträge · ${fmtSize(totalBytes)}\n\nDies kann nicht rückgängig gemacht werden.`,
+      `${selected.length} Einträge · ${fmtSize(totalBytes)}` +
+      (incomplete ? `\n\n⚠ ${incomplete} davon sind evtl. noch nicht fertig heruntergeladen.` : '') +
+      `\n\nDies kann nicht rückgängig gemacht werden.`,
       'Verschieben'
     );
     if (!confirmed) return;
   }
 
-  const moves = selected.map((item, idx) => {
-    const cs = cardState[item.id];
-    const s  = item.suggestion;
+  const moves = selected.map(item => {
+    const cs = cardState[item._k];
     return {
       source_release: item.source_release,
       source_top:     item.source_top,
       dest_dir:       cs.destDir,
       type:           cs.type,
-      video_files:    cs.type === 'series' ? (s.video_files || []) : [],
+      video_files:    cs.type === 'series' ? (item.suggestion.video_files || []) : [],
       is_loose_file:  item.is_loose_file || false,
       // Only set on the single item being replaced
       replaced_path:  (replacedPath && selected.length === 1) ? replacedPath : null,
     };
   });
 
-  _selectedForMove = selected;
-
-  // Start move on server (returns immediately, move runs in background)
   try {
-    const r = await fetch('/api/move', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moves }),
-    });
-    const data = await r.json();
-    if (!data.ok) throw new Error(data.error || 'Fehler beim Starten');
+    await api('/api/move', { moves });
   } catch (e) {
-    toast('Fehler: ' + e.message, 'error');
+    toast('Fehler: ' + e.message, 'error', 8000);
     return;
   }
 
-  // Show overlay and open SSE stream
-  document.getElementById('progress-overlay').classList.add('active');
-  document.getElementById('prog-items-count').textContent = `0 / ${moves.length}`;
-  listenProgress(moves.length);
+  _selectedForMove = selected;
+  openProgressOverlay(moves.length);
+  listenProgress();
 }
 
-function listenProgress(totalItems) {
+function openProgressOverlay(totalItems) {
+  document.getElementById('progress-overlay').classList.add('active');
+  document.getElementById('prog-items-count').textContent = totalItems ? `0 / ${totalItems}` : '';
+}
+
+function listenProgress() {
   const es = new EventSource('/api/progress');
 
   es.onmessage = (event) => {
     const p = JSON.parse(event.data);
-    updateProgressUI(p, totalItems);
-
-    if (p.finished) {
+    if (!p.active && !p.finished) {
+      // No move running (e.g. finished before we attached)
       es.close();
-      setTimeout(() => finishMove(p.results || []), 600);
+      document.getElementById('progress-overlay').classList.remove('active');
+      return;
     }
+    if (p.results !== undefined) {
+      es.close();
+      setTimeout(() => finishMove(p.results), 600);
+      return;
+    }
+    updateProgressUI(p);
   };
 
   es.onerror = () => {
     es.close();
+    toast('Verbindung zum Server verloren — Seite neu laden, um den Fortschritt wieder anzuzeigen', 'error', 8000);
     document.getElementById('progress-overlay').classList.remove('active');
-    toast('Verbindung zum Server verloren', 'error');
   };
 }
 
-function updateProgressUI(p, totalItems) {
+function updateProgressUI(p) {
   const overallPct = p.total_bytes > 0
-    ? Math.round((p.copied_bytes / p.total_bytes) * 100) : 0;
+    ? Math.min(100, Math.round((p.copied_bytes / p.total_bytes) * 100)) : 0;
   const filePct = p.current_item_total > 0
-    ? Math.round((p.current_item_bytes / p.current_item_total) * 100) : 0;
+    ? Math.min(100, Math.round((p.current_item_bytes / p.current_item_total) * 100)) : 0;
 
-  // Bars
   const oBar = document.getElementById('prog-overall-bar');
   oBar.style.width = overallPct + '%';
-  if (p.finished) oBar.classList.add('done');
+  oBar.classList.toggle('done', !!p.finished);
 
   document.getElementById('prog-file-bar').style.width = filePct + '%';
   document.getElementById('prog-overall-pct').textContent = overallPct + '%';
   document.getElementById('prog-file-pct').textContent = filePct + '%';
 
-  // Current item / file
-  if (p.current_item) {
-    document.getElementById('prog-current-item').textContent = p.current_item;
-  }
-  if (p.current_file) {
-    document.getElementById('prog-current-file').textContent = p.current_file;
-  }
+  if (p.current_item) document.getElementById('prog-current-item').textContent = p.current_item;
+  if (p.current_file) document.getElementById('prog-current-file').textContent = p.current_file;
 
-  // Items count
-  document.getElementById('prog-items-count').textContent =
-    `${p.done_items || 0} / ${totalItems}`;
+  document.getElementById('prog-items-count').textContent = `${p.done_items || 0} / ${p.total_items || 0}`;
 
-  // Stats
   document.getElementById('prog-copied').textContent = fmtSize(p.copied_bytes);
   document.getElementById('prog-total').textContent  = fmtSize(p.total_bytes);
   document.getElementById('prog-speed').textContent  =
     p.speed_bps > 0 ? fmtSize(Math.round(p.speed_bps)) + '/s' : '—';
 
-  if (p.eta_seconds != null && p.eta_seconds > 0) {
-    document.getElementById('prog-eta').textContent = fmtEta(p.eta_seconds);
-  } else if (p.finished) {
-    document.getElementById('prog-eta').textContent = 'Fertig';
-  } else {
-    document.getElementById('prog-eta').textContent = '—';
-  }
+  const eta = document.getElementById('prog-eta');
+  if (p.finished) eta.textContent = 'Fertig';
+  else if (p.eta_seconds > 0) eta.textContent = fmtEta(p.eta_seconds);
+  else eta.textContent = '—';
 
-  // Errors
   if (p.errors && p.errors.length > 0) {
     const el = document.getElementById('prog-errors');
-    el.style.display = 'block';
+    el.hidden = false;
     el.textContent = p.errors.join('\n');
   }
 
   if (p.finished) {
     document.getElementById('prog-title').textContent = 'Abgeschlossen';
-    const spinner = document.querySelector('#progress-overlay .spinner');
-    if (spinner) spinner.style.display = 'none';
-    // Show close button
-    document.getElementById('prog-close-btn').style.display = 'inline-flex';
+    document.querySelector('#progress-overlay .spinner').hidden = true;
+    document.getElementById('prog-close-btn').hidden = false;
   }
 }
 
 function closeProgressOverlay() {
   document.getElementById('progress-overlay').classList.remove('active');
   // Reset for next use
-  document.getElementById('prog-close-btn').style.display = 'none';
+  document.getElementById('prog-close-btn').hidden = true;
   document.getElementById('prog-title').textContent = 'Verschiebe Dateien…';
-  document.querySelector('#progress-overlay .spinner').style.display = 'inline-block';
+  document.querySelector('#progress-overlay .spinner').hidden = false;
   document.getElementById('prog-overall-bar').classList.remove('done');
-  document.getElementById('prog-errors').style.display = 'none';
+  document.getElementById('prog-errors').hidden = true;
   // Auto-rescan so UI reflects current state
   doScan();
 }
 
 function finishMove(results) {
   // Overlay stays open — user clicks "Schliessen"
-
-  const ok     = results.filter(r => r.ok).length;
+  const ok    = results.filter(r => r.ok).length;
   const failed = results.filter(r => !r.ok);
 
   _selectedForMove.forEach((item, idx) => {
     const res  = results[idx];
-    const card = getCard(item.id);
+    const card = getCard(item._k);
     if (!card) return;
     if (res && res.ok) {
-      card.classList.remove('selected', 'expanded');
+      card.classList.remove('selected', 'expanded', 'skipped');
       card.classList.add('done');
-      cardState[item.id].selected = false;
+      cardState[item._k].selected = false;
     } else {
       card.classList.add('error');
-      if (res) toast(`Fehler: ${res.error}`, 'error');
+      if (res) toast(`Fehler: ${res.error}`, 'error', 8000);
     }
   });
+  _selectedForMove = [];
 
   if (ok > 0) toast(`${ok} Einträge erfolgreich verschoben`, 'success');
   if (failed.length > 0) toast(`${failed.length} Fehler`, 'error');
 
-  updateActionBar();
-  updateToolbarLabel();
+  updateSelectionInfo();
+  loadHistory(true);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtSize(bytes) {
   if (!bytes) return '—';
   if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  if (bytes < 1024 ** 2) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 ** 3) return (bytes / 1024 ** 2).toFixed(1) + ' MB';
+  return (bytes / 1024 ** 3).toFixed(2) + ' GB';
 }
 
 function fmtEta(secs) {
@@ -1630,39 +1639,33 @@ function fmtEta(secs) {
 }
 
 function escHtml(s) {
-  return String(s || '').replace(/[&<>"']/g, c => ({
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
 }
 
-function escId(s) {
-  // Encode for use as JS string argument in onclick
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+function basename(p) {
+  return String(p || '').replace(/\\/g, '/').split('/').pop();
 }
 
 function toast(msg, type = 'info', duration = 4000) {
-  const container = document.getElementById('toast-container');
   const el = document.createElement('div');
   el.className = 'toast ' + type;
   el.textContent = msg;
-  container.appendChild(el);
-  setTimeout(() => { el.remove(); }, duration);
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), duration);
 }
-
-// Inject server-side config values for JS dest-dir building
-window._moviesDir = {{ config.movies_dir | tojson }};
-window._seriesDir = {{ config.series_dir | tojson }};
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 let _currentTab = 'scan';
 
 function switchTab(tab) {
   _currentTab = tab;
-  document.getElementById('tab-scan').style.display    = tab === 'scan'    ? 'block' : 'none';
-  document.getElementById('tab-history').style.display = tab === 'history' ? 'block' : 'none';
+  document.getElementById('tab-scan').hidden    = tab !== 'scan';
+  document.getElementById('tab-history').hidden = tab !== 'history';
   document.getElementById('tab-btn-scan').classList.toggle('active',    tab === 'scan');
   document.getElementById('tab-btn-history').classList.toggle('active', tab === 'history');
-  document.getElementById('action-bar').style.display  = tab === 'scan' && items.length > 0 ? 'flex' : 'none';
+  document.getElementById('action-bar').hidden  = !(tab === 'scan' && items.length > 0);
   if (tab === 'history') loadHistory();
 }
 
@@ -1670,16 +1673,14 @@ function switchTab(tab) {
 let _histEntries = [];
 let _histFilter  = 'all';
 
-async function loadHistory() {
+async function loadHistory(silent = false) {
   try {
-    const r = await fetch('/api/history?limit=200');
-    const data = await r.json();
-    if (!data.ok) throw new Error(data.error);
+    const data = await api('/api/history?limit=200');
     _histEntries = data.entries;
     document.getElementById('tab-badge-history').textContent = _histEntries.length;
     renderHistory();
   } catch (e) {
-    toast('Historie konnte nicht geladen werden: ' + e.message, 'error');
+    if (!silent) toast('Historie konnte nicht geladen werden: ' + e.message, 'error');
   }
 }
 
@@ -1691,17 +1692,14 @@ function setHistFilter(filter, btn) {
 }
 
 function renderHistory() {
-  const search = (document.getElementById('hist-search')?.value || '').toLowerCase();
+  const search = (document.getElementById('hist-search').value || '').toLowerCase();
   const tbody  = document.getElementById('hist-tbody');
 
   let entries = _histEntries;
-
-  // Filter
   if (_histFilter === 'movie')  entries = entries.filter(e => e.type === 'movie');
   if (_histFilter === 'series') entries = entries.filter(e => e.type === 'series');
   if (_histFilter === 'error')  entries = entries.filter(e => !e.ok);
 
-  // Search
   if (search) {
     entries = entries.filter(e =>
       (e.release_name || '').toLowerCase().includes(search) ||
@@ -1710,26 +1708,26 @@ function renderHistory() {
   }
 
   if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="hist-empty">Keine Einträge gefunden.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="hist-empty">Keine Einträge gefunden.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = entries.map(e => {
-    const ts      = fmtTimestamp(e.ts);
     const name    = escHtml(e.release_name || '—');
     const dest    = escHtml(e.dest || '—');
-    const typeLbl = { movie: '🎬 Film', series: '📺 Serie', unknown: '❓' }[e.type] || e.type;
+    const typeLbl = { movie: '🎬 Film', series: '📺 Serie', unknown: '❓' }[e.type] || escHtml(e.type);
     const status  = e.ok
       ? `<span class="ok-dot">✓</span>`
       : `<span class="err-dot" title="${escHtml(e.error || '')}">✗ ${escHtml(e.error || 'Fehler')}</span>`;
     const replaced = e.replaced_path
-      ? `<div style="font-size:10px;color:var(--orange);font-family:var(--mono);margin-top:2px" title="Ersetzt: ${escHtml(e.replaced_path)}">⇄ ${escHtml(e.replaced_path.split('/').pop())}</div>`
+      ? `<div class="td-replaced" title="Ersetzt: ${escHtml(e.replaced_path)}">⇄ ${escHtml(basename(e.replaced_path))}</div>`
       : '';
     return `
       <tr>
-        <td class="td-ts">${ts}</td>
+        <td class="td-ts">${fmtTimestamp(e.ts)}</td>
         <td class="td-name" title="${name}">${name}${replaced}</td>
         <td class="td-type">${typeLbl}</td>
+        <td class="td-size">${fmtSize(e.size_bytes)}</td>
         <td class="td-dest" title="${dest}">${dest}</td>
         <td class="td-status">${status}</td>
       </tr>`;
@@ -1738,30 +1736,29 @@ function renderHistory() {
 
 function fmtTimestamp(iso) {
   if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch { return iso; }
+  const d = new Date(iso);
+  if (isNaN(d)) return escHtml(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Refresh history badge after a successful move
-const _origFinishMove = finishMove;
-function finishMove(results) {
-  _origFinishMove(results);
-  // Update badge without switching tab
-  fetch('/api/history?limit=1').then(r => r.json()).then(data => {
-    if (data.ok) {
-      // Lazy: just reload count from full list next time history tab opens
-      const badge = document.getElementById('tab-badge-history');
-      if (badge.textContent !== '—') {
-        const ok = results.filter(r => r.ok).length;
-        const cur = parseInt(badge.textContent) || 0;
-        badge.textContent = cur + ok;
-      }
+// ── Init: re-attach to a running scan/move after a page reload ────────────────
+(async function init() {
+  syncThemeButton();
+  loadHistory(true);
+  try {
+    const s = await api('/api/status');
+    if (s.moving) {
+      openProgressOverlay(0);
+      listenProgress();
+    } else if (s.scanning) {
+      setScanBusy(true);
+      document.getElementById('state-empty').hidden = true;
+      showScanStatus();
+      listenScan();
     }
-  }).catch(() => {});
-}
+  } catch { /* not critical */ }
+})();
 </script>
 
 </body>

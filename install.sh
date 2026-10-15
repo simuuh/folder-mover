@@ -1,26 +1,43 @@
 #!/bin/bash
 # Folder Mover - Installation Script
-# Run as root: sudo bash install.sh
+# Run as root:  sudo bash install.sh
+# Other user:   sudo SERVICE_USER=media bash install.sh
 
-set -e
+set -euo pipefail
 
 APP_DIR="/opt/folder-mover"
-SERVICE_USER="user"   # adjust if your download user is different
+SERVICE_USER="${SERVICE_USER:-${SUDO_USER:-user}}"   # user that owns the download dir
 
-echo "==> Installing Folder Mover to $APP_DIR"
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Please run as root: sudo bash install.sh" >&2
+  exit 1
+fi
+if ! id "$SERVICE_USER" >/dev/null 2>&1; then
+  echo "User '$SERVICE_USER' does not exist. Set SERVICE_USER=<name>." >&2
+  exit 1
+fi
+
+cd "$(dirname "$0")"
+echo "==> Installing Folder Mover to $APP_DIR (service user: $SERVICE_USER)"
 
 # ── Copy files ─────────────────────────────────────────────────────────────────
 mkdir -p "$APP_DIR"
-cp -r app.py config.py scanner.py mover.py requirements.txt templates "$APP_DIR/"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
+cp -r app.py config.py scanner.py mover.py history.py gunicorn.conf.py \
+      requirements.txt config.yaml.example templates static "$APP_DIR/"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 if [ ! -f "$APP_DIR/config.yaml" ]; then
-  cp config.yaml "$APP_DIR/config.yaml"
+  if [ -f config.yaml ]; then
+    cp config.yaml "$APP_DIR/config.yaml"
+  else
+    cp config.yaml.example "$APP_DIR/config.yaml"
+  fi
+  chmod 600 "$APP_DIR/config.yaml"
   echo ""
   echo "  !! Edit $APP_DIR/config.yaml and set your paths + password !!"
   echo ""
 fi
+chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
 
 # ── Python venv ───────────────────────────────────────────────────────────────
 echo "==> Creating Python virtualenv"
@@ -30,16 +47,17 @@ python3 -m venv "$APP_DIR/venv"
 
 # ── Systemd ───────────────────────────────────────────────────────────────────
 echo "==> Installing systemd service"
-# Adjust User= in service file to match SERVICE_USER
-sed "s/^User=.*/User=$SERVICE_USER/" folder-mover.service > /etc/systemd/system/folder-mover.service
-sed -i "s/^Group=.*/Group=$SERVICE_USER/" /etc/systemd/system/folder-mover.service
+sed -e "s/^User=.*/User=$SERVICE_USER/" -e "s/^Group=.*/Group=$SERVICE_USER/" \
+    folder-mover.service > /etc/systemd/system/folder-mover.service
 
 systemctl daemon-reload
 systemctl enable folder-mover
 systemctl restart folder-mover
 
+PORT=$(grep -E '^port:' "$APP_DIR/config.yaml" | awk '{print $2}' || true)
 echo ""
-echo "==> Done! Folder Mover läuft auf http://$(hostname -I | awk '{print $1}'):8080"
-echo "    Logs: journalctl -u folder-mover -f"
-echo "    Passwort ändern: nano $APP_DIR/config.yaml"
+echo "==> Done! Folder Mover läuft auf http://$(hostname -I | awk '{print $1}'):${PORT:-8080}"
+echo "    Logs:            journalctl -u folder-mover -f"
+echo "    Passwort-Hash:   $APP_DIR/venv/bin/python $APP_DIR/app.py --hash-password"
+echo "    Konfiguration:   nano $APP_DIR/config.yaml"
 echo ""

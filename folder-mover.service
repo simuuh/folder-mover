@@ -1,21 +1,30 @@
 [Unit]
 Description=Folder Mover - Download organizer web UI
-After=network.target
+After=network-online.target remote-fs.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=user
 Group=user
 WorkingDirectory=/opt/folder-mover
-ExecStart=/opt/folder-mover/venv/bin/python app.py
+ExecStart=/opt/folder-mover/venv/bin/gunicorn -c gunicorn.conf.py app:app
+# Fallback without gunicorn (Flask development server):
+# ExecStart=/opt/folder-mover/venv/bin/python app.py
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
-# Harden a bit
+# Hardening (download_dir and NAS mounts must stay writable)
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target

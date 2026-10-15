@@ -1,12 +1,14 @@
 """Mover: executes confirmed move operations with live progress reporting."""
 
+import logging
 import os
 import shutil
-import time
 import threading
-import logging
+import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+
+from config import video_extensions
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +33,21 @@ def _set(**kwargs):
 def reset_progress():
     with _progress_lock:
         _progress.clear()
+
+
+def mark_pending(total_items: int):
+    """Mark a move as started before the worker thread is up (avoids SSE races)."""
+    with _progress_lock:
+        _progress.clear()
+        _progress.update(active=True, finished=False, total_items=total_items,
+                         done_items=0, total_bytes=0, copied_bytes=0, errors=[])
+
+
+def mark_failed(error: str):
+    """Finish the progress state after an unexpected crash of the worker."""
+    with _progress_lock:
+        _progress.setdefault("errors", []).append(error)
+        _progress.update(active=False, finished=True, speed_bps=0, eta_seconds=0)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -123,7 +140,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         moved, errors = [], []
 
         if not video_files:
-            exts = set(config.get("video_extensions", [".mkv", ".mp4", ".avi"]))
+            exts = video_extensions(config)
             if source_release.is_file():
                 video_files = [source_release.name]
                 source_base = source_release.parent
@@ -140,6 +157,10 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             (source_base / vf).stat().st_size
             for vf in video_files if (source_base / vf).exists()
         )
+        space_error = _check_free_space(dest_dir, item_total)
+        if space_error:
+            return {"source_release": str(source_release), "ok": False, "error": space_error}
+
         item_copied = 0
 
         for rel_path in video_files:
@@ -168,7 +189,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
         if errors and not moved:
             return {"source_release": str(source_release), "ok": False, "error": "; ".join(errors)}
-        return {"source_release": str(source_release), "ok": True,
+        return {"source_release": str(source_release), "ok": True, "size_bytes": item_copied,
                 "moved_files": moved, "warnings": errors or None}
 
     # ── Movie / Unknown: copy entire release folder ───────────────────────────
@@ -193,6 +214,10 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                     files_to_copy.append((fsrc, fdst))
                     item_total += fsrc.stat().st_size
 
+        space_error = _check_free_space(dest_dir, item_total)
+        if space_error:
+            return {"source_release": str(source_release), "ok": False, "error": space_error}
+
         item_copied = 0
         for fsrc, fdst in files_to_copy:
             fdst.parent.mkdir(parents=True, exist_ok=True)
@@ -212,7 +237,8 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         if source_top != source_release and source_top.exists():
             _remove_if_empty(source_top)
 
-        return {"source_release": str(source_release), "ok": True, "dest": str(dest_dir)}
+        return {"source_release": str(source_release), "ok": True, "dest": str(dest_dir),
+                "size_bytes": item_total}
 
 
 # ── Chunked file copy ─────────────────────────────────────────────────────────
@@ -231,28 +257,39 @@ def _copy_with_progress(src: Path, dst: Path, callback: Callable):
     total = src.stat().st_size
     copied = 0
     since_last_sync = 0
-    with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
-        while True:
-            buf = fsrc.read(CHUNK_SIZE)
-            if not buf:
-                break
-            fdst.write(buf)
-            chunk = len(buf)
-            copied += chunk
-            since_last_sync += chunk
+    try:
+        with open(src, "rb") as fsrc, open(dst, "xb") as fdst:
+            while True:
+                buf = fsrc.read(CHUNK_SIZE)
+                if not buf:
+                    break
+                fdst.write(buf)
+                chunk = len(buf)
+                copied += chunk
+                since_last_sync += chunk
 
-            if since_last_sync >= FSYNC_EVERY_BYTES:
-                fdst.flush()
-                os.fsync(fdst.fileno())
-                since_last_sync = 0
+                if since_last_sync >= FSYNC_EVERY_BYTES:
+                    fdst.flush()
+                    os.fsync(fdst.fileno())
+                    since_last_sync = 0
 
-            callback(src.name, copied, total, chunk)
+                callback(src.name, copied, total, chunk)
 
-        # Always sync the tail so the file is fully on disk/NAS before we
-        # touch metadata or unlink the source.
-        fdst.flush()
-        os.fsync(fdst.fileno())
-    shutil.copystat(str(src), str(dst))
+            # Always sync the tail so the file is fully on disk/NAS before we
+            # touch metadata or unlink the source.
+            fdst.flush()
+            os.fsync(fdst.fileno())
+    except FileExistsError:
+        raise
+    except BaseException:
+        # Never leave a truncated file on the NAS that looks like a finished one
+        dst.unlink(missing_ok=True)
+        raise
+    try:
+        shutil.copystat(str(src), str(dst))
+    except OSError as e:
+        # SMB/NFS mounts often refuse timestamps/permissions — data is intact
+        log.debug("copystat failed for %s: %s", dst, e)
 
 
 # ── Rolling speed tracker ─────────────────────────────────────────────────────
@@ -310,17 +347,34 @@ def _calc_size(move: dict) -> int:
 
 
 def _cleanup_after_series_move(source_top: Path, source_release: Path, config: dict):
-    exts = set(config.get("video_extensions", [".mkv", ".mp4", ".avi"]))
-    has_video = any(
-        Path(f).suffix.lower() in exts
-        for root, _, files in os.walk(source_release) if source_release.exists()
-        for f in files
-    )
-    if not has_video and source_release.exists():
+    exts = video_extensions(config)
+    if source_release.is_dir():
+        has_video = any(
+            Path(f).suffix.lower() in exts
+            for _, _, files in os.walk(source_release)
+            for f in files
+        )
+        if has_video:
+            return
         log.info("Removing video-less source: %s", source_release)
         shutil.rmtree(str(source_release), ignore_errors=True)
-        if source_top != source_release and source_top.exists():
-            _remove_if_empty(source_top)
+    if source_top != source_release and source_top.exists():
+        _remove_if_empty(source_top)
+
+
+def _check_free_space(dest_dir: Path, needed: int) -> str | None:
+    """Return an error message if the target filesystem cannot hold `needed` bytes."""
+    probe = dest_dir
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    try:
+        free = shutil.disk_usage(probe).free
+    except OSError:
+        return None  # can't tell (e.g. exotic mount) — let the copy decide
+    if needed > free:
+        return (f"Not enough free space on target: need {needed / 1024**3:.1f} GB, "
+                f"{free / 1024**3:.1f} GB free")
+    return None
 
 
 def _remove_if_empty(path: Path):

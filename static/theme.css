@@ -1,0 +1,96 @@
+/* Shared design tokens for folder.mover — dark (default) and light theme.
+   The theme follows the OS setting unless the user picked one explicitly
+   (stored in localStorage, applied as <html data-theme="light|dark">). */
+
+:root {
+  color-scheme: dark;
+  --bg:           #0d0f12;
+  --surface:      #141720;
+  --border:       #252a35;
+  --text:         #c8d0e0;
+  --heading:      #ffffff;
+  --muted:        #7a8396;
+  --accent:       #4f8ef7;
+  --accent-hover: #6ba3ff;
+  --green:        #3ecf76;
+  --green-hover:  #5de08f;
+  --orange:       #f59e0b;
+  --red:          #ef4444;
+  --on-accent:    #ffffff;
+  --on-green:     #0d0f12;
+  --overlay:      rgba(13, 15, 18, 0.88);
+  --hover:        rgba(255, 255, 255, 0.03);
+  --shadow:       none;
+  --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg:           #f4f6fa;
+    --surface:      #ffffff;
+    --border:       #dfe3ec;
+    --text:         #1d2433;
+    --heading:      #0d1220;
+    --muted:        #5d6679;
+    --accent:       #2f6fe4;
+    --accent-hover: #1f5ccc;
+    --green:        #198a4b;
+    --green-hover:  #157a41;
+    --orange:       #b86e00;
+    --red:          #d42c2c;
+    --on-accent:    #ffffff;
+    --on-green:     #ffffff;
+    --overlay:      rgba(30, 36, 50, 0.45);
+    --hover:        rgba(0, 0, 0, 0.03);
+    --shadow:       0 1px 2px rgba(16, 24, 40, 0.06);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:           #f4f6fa;
+  --surface:      #ffffff;
+  --border:       #dfe3ec;
+  --text:         #1d2433;
+  --heading:      #0d1220;
+  --muted:        #5d6679;
+  --accent:       #2f6fe4;
+  --accent-hover: #1f5ccc;
+  --green:        #198a4b;
+  --green-hover:  #157a41;
+  --orange:       #b86e00;
+  --red:          #d42c2c;
+  --on-accent:    #ffffff;
+  --on-green:     #ffffff;
+  --overlay:      rgba(30, 36, 50, 0.45);
+  --hover:        rgba(0, 0, 0, 0.03);
+  --shadow:       0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  min-height: 100vh;
+  transition: background 0.2s, color 0.2s;
+}
+
+.logo {
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--heading);
+  letter-spacing: -0.5px;
+}
+.logo span { color: var(--accent); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

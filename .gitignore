@@ -14,3 +14,13 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors
+.vscode/
+.idea/

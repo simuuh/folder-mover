@@ -1,9 +1,11 @@
 """Scanner: walks the download directory and classifies entries."""
 
+import logging
 import os
 import re
-import logging
 from pathlib import Path
+
+from config import video_extensions
 
 log = logging.getLogger(__name__)
 
@@ -150,8 +152,26 @@ def _lcs_len(a: str, b: str) -> int:
 
 # ── Wrapper detection ─────────────────────────────────────────────────────────
 
-def is_uuid_wrapper(name: str) -> bool:
+MAX_WRAPPER_DEPTH = 6
+
+# Sub-folders that belong to a release and never count as a nested release
+EXTRA_DIRS = {"sample", "samples", "subs", "subtitles", "proof", "extras",
+              "featurettes", "screens", "screenshots", "covers", "artwork"}
+
+# Suffixes of files that are still being downloaded/extracted
+PARTIAL_SUFFIXES = {".part", ".crdownload", ".partial", ".download", ".tmp", ".!qb"}
+
+
+def is_strong_wrapper(name: str, extra_patterns: list[re.Pattern] | tuple = ()) -> bool:
+    """Name is certainly not a release (UUID or a configured wrapper pattern)."""
     if RE_UUID.match(name):
+        return True
+    return any(p.search(name) for p in extra_patterns)
+
+
+def is_uuid_wrapper(name: str, extra_patterns: list[re.Pattern] | tuple = ()) -> bool:
+    """Strong wrapper, or a short generic name without any quality tag."""
+    if is_strong_wrapper(name, extra_patterns):
         return True
     if len(name) < 10 and not RE_QUALITY.search(name):
         return True
@@ -177,29 +197,70 @@ def is_name_wrapper(parent_name: str, child_name: str) -> bool:
     return False
 
 
-def find_release_folder(path: Path, depth: int = 0) -> Path | None:
-    if depth > 4:
-        return None
-    name = path.name
-    if is_uuid_wrapper(name):
-        try:
-            children = [c for c in path.iterdir() if c.is_dir()]
-        except PermissionError:
-            return None
-        for child in sorted(children):
-            result = find_release_folder(child, depth + 1)
-            if result:
-                return result
-        return None
+def _contains_video(path: Path, exts: set[str]) -> bool:
+    for _, _, files in os.walk(path):
+        if any(Path(f).suffix.lower() in exts for f in files):
+            return True
+    return False
+
+
+def find_releases(
+    path: Path,
+    exts: set[str],
+    extra_patterns: list[re.Pattern] | tuple = (),
+    depth: int = 0,
+) -> list[Path]:
+    """
+    Resolve a top-level download entry to the real release(s) inside it.
+
+    Handles arbitrarily nested wrappers (UUID › hoster-suffix › release,
+    release-name › UUID › release, …) and wrappers holding several releases or
+    loose video files. Each returned path is a release folder or a single video
+    file. Returns an empty list only for plain non-video files.
+    """
+    if path.is_file():
+        return [path] if path.suffix.lower() in exts else []
+    if depth > MAX_WRAPPER_DEPTH:
+        return [path]
+
     try:
-        subdirs = [c for c in path.iterdir() if c.is_dir()]
-    except PermissionError:
-        return path
-    if len(subdirs) == 1:
+        children = sorted(path.iterdir())
+    except OSError:
+        return [path]
+
+    name = path.name
+    strong = is_strong_wrapper(name, extra_patterns)
+    videos = [c for c in children if c.is_file() and c.suffix.lower() in exts]
+    subdirs = [c for c in children if c.is_dir() and c.name.lower() not in EXTRA_DIRS]
+
+    # Video files directly inside: a regular folder is the release itself
+    # (movie folder, season pack). A UUID-like wrapper only holds loose files.
+    if videos and not strong:
+        return [path]
+
+    releases: list[Path] = list(videos)
+
+    if len(subdirs) == 1 and not videos:
         child = subdirs[0]
-        if is_name_wrapper(name, child.name):
-            return find_release_folder(child, depth + 1)
-    return path
+        if (is_uuid_wrapper(name, extra_patterns)
+                or is_strong_wrapper(child.name, extra_patterns)
+                or is_name_wrapper(name, child.name)):
+            return find_releases(child, exts, extra_patterns, depth + 1)
+        return [path]
+
+    if len(subdirs) > 1 or (subdirs and videos):
+        candidates = [c for c in subdirs if _contains_video(c, exts)]
+        split = is_uuid_wrapper(name, extra_patterns) or (
+            classify(name)["type"] == "unknown"
+            and sum(classify(c.name)["type"] != "unknown" for c in candidates) >= 2
+        )
+        if split:
+            for child in candidates:
+                releases.extend(find_releases(child, exts, extra_patterns, depth + 1))
+        elif not videos:
+            return [path]
+
+    return releases or [path]
 
 
 # ── Classification ────────────────────────────────────────────────────────────
@@ -324,6 +385,7 @@ def suggest_destination(
         season_exists = season_str in existing_seasons
 
         video_files = _find_videos(release_folder, config)
+        video_base = release_folder.parent if release_folder.is_file() else release_folder
 
         return {
             "type": "series",
@@ -331,7 +393,7 @@ def suggest_destination(
             "season": season,
             "dest_dir": dest_dir,
             "is_season_pack": classification.get("is_season_pack", False),
-            "video_files": [str(v.relative_to(release_folder)) for v in video_files],
+            "video_files": [v.relative_to(video_base).as_posix() for v in video_files],
             "confidence": classification["confidence"],
             # Library match info for the UI
             "matched_existing": matched_name if matched_name else None,
@@ -339,8 +401,6 @@ def suggest_destination(
             "match_auto": match_auto,
             "existing_seasons": existing_seasons,
             "season_exists": season_exists,
-            # All known series for the dropdown autocomplete
-            "known_series": library.all_names() if library else [],
         }
 
     elif rtype == "movie":
@@ -434,7 +494,9 @@ def _find_movie_duplicate(
 
 
 def _find_videos(folder: Path, config: dict) -> list[Path]:
-    exts = set(config.get("video_extensions", [".mkv", ".mp4", ".avi"]))
+    if folder.is_file():
+        return [folder]
+    exts = video_extensions(config)
     videos = []
     for root, _, files in os.walk(folder):
         for f in files:
@@ -450,9 +512,9 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
     if not dl_dir.exists():
         raise FileNotFoundError(f"Download directory not found: {dl_dir}")
 
-    def emit(phase: str, current: str = "", found: int = 0):
+    def emit(phase: str, current: str = "", found: int = 0, **extra):
         if on_progress:
-            on_progress({"phase": phase, "current": current, "found": found})
+            on_progress({"phase": phase, "current": current, "found": found, **extra})
 
     emit("init", "Lese Download-Verzeichnis…")
 
@@ -462,110 +524,91 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
     library = SeriesLibrary(config["series_dir"])
     emit("library", f"{len(library.all_names())} Serien indexiert")
 
+    exts = video_extensions(config)
+    wrapper_res = [re.compile(p, re.IGNORECASE) for p in config.get("wrapper_patterns") or []]
+
     items = []
     seen_releases: set[str] = set()
 
     for entry in all_entries:
         emit("scanning", entry.name, len(items))
         try:
-            if entry.is_file():
-                ext = Path(entry.name).suffix.lower()
-                if ext in set(config.get("video_extensions", [".mkv", ".mp4", ".avi"])):
-                    item = _process_loose_file(entry, config, library)
-                    if item:
-                        items.append(item)
-
-            elif entry.is_dir():
-                release = find_release_folder(entry) or entry
+            releases = find_releases(entry, exts, wrapper_res)
+            for release in releases:
                 release_key = str(release.resolve())
                 if release_key in seen_releases:
                     continue
                 seen_releases.add(release_key)
-                item = _process_release_folder(entry, release, config, library)
-                if item:
-                    items.append(item)
-
+                items.append(_process_release(entry, release, config, library,
+                                              shared_wrapper=len(releases) > 1))
         except Exception as e:
             log.warning("Error processing %s: %s", entry, e)
 
-    emit("done", f"{len(items)} Einträge gefunden", len(items))
+    emit("done", f"{len(items)} Einträge gefunden", len(items),
+         known_series=library.all_names())
     return items
 
 
-def _process_release_folder(
-    top_entry: Path, release: Path, config: dict, library: SeriesLibrary
-) -> dict | None:
-    classification = classify(release.name)
+def _process_release(
+    top_entry: Path, release: Path, config: dict, library: SeriesLibrary,
+    shared_wrapper: bool = False,
+) -> dict:
+    is_file = release.is_file()
+    classification = classify(release.stem if is_file else release.name)
     suggestion     = suggest_destination(release, classification, config, library)
-    dest_exists    = os.path.exists(suggestion["dest_dir"])
 
+    if is_file and suggestion["type"] != "series":
+        # Loose movie file: goes directly into the letter folder
+        suggestion["dest_dir"] = os.path.join(
+            config["movies_dir"], suggestion.get("first_char", "#"), release.name,
+        )
+
+    size, incomplete = _dir_stats(release, config)
+    is_wrapper = top_entry != release
     return {
-        "id":             str(top_entry.resolve()),
+        "id":             str(release.resolve()),
         "source_top":     str(top_entry),
         "source_release": str(release),
         "release_name":   release.name,
-        "is_wrapper":     str(top_entry) != str(release),
-        "wrapper_name":   top_entry.name if str(top_entry) != str(release) else None,
-        "suggestion":     suggestion,
-        "dest_exists":    dest_exists,
-        "size_bytes":     _dir_size(release, config),
-    }
-
-
-def _process_loose_file(
-    file: Path, config: dict, library: SeriesLibrary
-) -> dict | None:
-    classification = classify(file.stem)
-    suggestion     = suggest_destination(file.parent / file.name, classification, config, library)
-
-    if suggestion["type"] == "series":
-        suggestion["video_files"] = [file.name]
-        suggestion["dest_dir"] = os.path.join(
-            config["series_dir"],
-            suggestion.get("series_name", "Unknown"),
-            f"S{suggestion.get('season', 1):02d}",
-        )
-    else:
-        suggestion["dest_dir"] = os.path.join(
-            config["movies_dir"],
-            suggestion.get("first_char", "#"),
-            file.name,
-        )
-
-    return {
-        "id":             str(file.resolve()),
-        "source_top":     str(file),
-        "source_release": str(file),
-        "release_name":   file.name,
-        "is_wrapper":     False,
-        "wrapper_name":   None,
+        "is_wrapper":     is_wrapper,
+        "wrapper_name":   top_entry.name if is_wrapper else None,
+        # Path from the top-level entry down to the release, e.g. "uuid/Foo - hoster/Foo"
+        "wrapper_path":   release.relative_to(top_entry).as_posix() if is_wrapper else None,
+        # Several releases live in the same wrapper → only delete the release itself
+        "shared_wrapper": shared_wrapper,
         "suggestion":     suggestion,
         "dest_exists":    os.path.exists(suggestion["dest_dir"]),
-        "size_bytes":     file.stat().st_size,
-        "is_loose_file":  True,
+        "size_bytes":     size,
+        "incomplete":     incomplete,
+        "is_loose_file":  is_file,
     }
 
 
-def _dir_size(path: Path, config: dict | None = None) -> int:
+def _dir_stats(path: Path, config: dict | None = None) -> tuple[int, bool]:
     """
-    Approximate the size of a release for display purposes.
+    Approximate the size of a release for display purposes and detect files
+    that are still being downloaded (``.part``, ``.crdownload``, …).
 
     Only stats video files instead of every file in the tree. On SMB/NFS each
     stat() is a network round-trip; release folders often carry extras (.nfo,
     .srt, sample.mkv, screenshots, ...) that add many extra round-trips while
-    contributing nothing useful to a "how big is this" estimate. If config is
-    not given (or no video files are found, e.g. for a loose file), falls back
-    to a single stat() on the path itself rather than walking everything.
+    contributing nothing useful to a "how big is this" estimate. If no video
+    files are found, falls back to a top-level-only estimate instead of
+    walking everything.
     """
     if path.is_file():
-        return path.stat().st_size
+        return path.stat().st_size, False
 
-    exts = set((config or {}).get("video_extensions", [".mkv", ".mp4", ".avi"]))
+    exts = video_extensions(config or {})
     total = 0
     found_any = False
+    incomplete = False
     for root, _, files in os.walk(path):
         for f in files:
-            if Path(f).suffix.lower() not in exts:
+            suffix = Path(f).suffix.lower()
+            if suffix in PARTIAL_SUFFIXES:
+                incomplete = True
+            if suffix not in exts:
                 continue
             try:
                 total += (Path(root) / f).stat().st_size
@@ -574,7 +617,7 @@ def _dir_size(path: Path, config: dict | None = None) -> int:
                 pass
 
     if found_any:
-        return total
+        return total, incomplete
 
     # No video files found (e.g. wrong extensions configured) — fall back to
     # a top-level-only estimate instead of a full recursive stat of everything.
@@ -584,4 +627,4 @@ def _dir_size(path: Path, config: dict | None = None) -> int:
                 total += entry.stat().st_size
     except OSError:
         pass
-    return total
+    return total, incomplete

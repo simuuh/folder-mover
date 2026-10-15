@@ -1,14 +1,14 @@
 """History: persists move operations to a JSON-lines log file."""
 
 import json
-import os
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-HISTORY_FILE = Path(__file__).parent / "history.jsonl"
+HISTORY_FILE = Path(os.environ.get("FOLDER_MOVER_HISTORY") or Path(__file__).parent / "history.jsonl")
 MAX_ENTRIES = 500
 
 
@@ -18,9 +18,9 @@ def append(moves: list[dict], results: list[dict]):
     moves and results are parallel lists (same order as execute_moves input/output).
     """
     entries = []
-    for move, result in zip(moves, results):
+    for move, result in zip(moves, results, strict=False):
         entry = {
-            "ts":            datetime.now(timezone.utc).isoformat(),
+            "ts":            datetime.now(UTC).isoformat(),
             "release_name":  Path(move.get("source_release", "")).name,
             "type":          move.get("type", "unknown"),
             "source":        move.get("source_release", ""),
@@ -28,7 +28,7 @@ def append(moves: list[dict], results: list[dict]):
             "ok":            result.get("ok", False),
             "error":         result.get("error") if not result.get("ok") else None,
             "replaced_path": move.get("replaced_path"),  # set when replacing existing NAS release
-            "size_bytes":    None,
+            "size_bytes":    result.get("size_bytes"),
         }
         entries.append(entry)
 

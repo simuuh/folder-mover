@@ -7,11 +7,19 @@ movies_dir: /mnt/Filme
 series_dir: /mnt/Serien
 
 # ── Web Server ─────────────────────────────────────────────────────────────────
+host: 0.0.0.0
 port: 8080
 
-# ── Authentication (Basic Auth) ────────────────────────────────────────────────
+# Stable secret for session cookies (otherwise everyone is logged out on restart).
+# Generate one with:  python3 -c "import secrets; print(secrets.token_hex(32))"
+secret_key: ""
+
+# ── Authentication ─────────────────────────────────────────────────────────────
 auth:
   username: admin
+  # Preferred: a hash generated with  python app.py --hash-password
+  password_hash: ""
+  # Fallback: plaintext password (only used when password_hash is empty)
   password: changeme          # change this!
 
 # ── Video file extensions to recognize ────────────────────────────────────────
@@ -23,10 +31,9 @@ video_extensions:
   - .ts
   - .m2ts
 
-# ── Episode detection patterns ────────────────────────────────────────────────
-# These are Python regex patterns. They are tried in order.
-# You shouldn't need to change these normally.
-episode_patterns:
-  - '(?i)S(\d{1,2})E(\d{1,2})'         # S01E01
-  - '(?i)(\d{1,2})x(\d{2})'            # 1x01
-  - '(?i)(Folge|Episode|Ep)[._\- ]?(\d{1,3})'  # Folge 01
+# ── Extra wrapper folders ─────────────────────────────────────────────────────
+# Python regexes for folder names that are never a release but only a container
+# (UUID folders are always recognised). Matching folders are looked through,
+# including wrappers inside wrappers.
+wrapper_patterns: []
+#  - '^jd-package-\d+$'

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 220" width="880" height="220" role="img" aria-label="folder.mover — sort your downloads into your NAS library">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#141720"/>
+      <stop offset="1" stop-color="#0d0f12"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4f8ef7" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#4f8ef7" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#3ecf76" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="880" height="220" rx="18" fill="url(#bg)"/>
+  <rect x="0.5" y="0.5" width="879" height="219" rx="17.5" fill="none" stroke="#252a35"/>
+
+  <!-- icon -->
+  <g transform="translate(64 58) scale(3.2)">
+    <rect width="32" height="32" rx="7" fill="#1a1e29"/>
+    <path d="M6 10h8l2 3h10v12H6z" fill="none" stroke="#4f8ef7" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M11 19l3 3 5-5" stroke="#3ecf76" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- title -->
+  <text x="200" y="108" font-family="ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="52" font-weight="700" fill="#ffffff" letter-spacing="-1">folder<tspan fill="#4f8ef7">.</tspan>mover</text>
+  <text x="202" y="146" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="20" fill="#9aa3b5">Sort movie &amp; series downloads into your NAS library.</text>
+
+  <!-- flow -->
+  <g font-family="ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace" font-size="13">
+    <rect x="202" y="164" width="96" height="26" rx="6" fill="#1a1e29" stroke="#252a35"/>
+    <text x="250" y="182" text-anchor="middle" fill="#c8d0e0">Downloads</text>
+    <rect x="312" y="176" width="60" height="2" fill="url(#glow)"/>
+    <rect x="386" y="164" width="76" height="26" rx="6" fill="#1a1e29" stroke="#4f8ef7"/>
+    <text x="424" y="182" text-anchor="middle" fill="#4f8ef7">classify</text>
+    <rect x="476" y="176" width="60" height="2" fill="url(#glow)"/>
+    <rect x="550" y="164" width="70" height="26" rx="6" fill="#1a1e29" stroke="#252a35"/>
+    <text x="585" y="182" text-anchor="middle" fill="#c8d0e0">review</text>
+    <rect x="634" y="176" width="60" height="2" fill="url(#glow)"/>
+    <rect x="708" y="164" width="56" height="26" rx="6" fill="#1a1e29" stroke="#3ecf76"/>
+    <text x="736" y="182" text-anchor="middle" fill="#3ecf76">NAS</text>
+  </g>
+</svg>
