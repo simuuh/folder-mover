@@ -50,6 +50,16 @@ echo "==> Installing systemd service"
 sed -e "s/^User=.*/User=$SERVICE_USER/" -e "s/^Group=.*/Group=$SERVICE_USER/" \
     folder-mover.service > /etc/systemd/system/folder-mover.service
 
+# Start only once the configured folders (NAS mounts) are available
+MOUNTS=$(cd "$APP_DIR" && "$APP_DIR/venv/bin/python" -c '
+from config import load_config
+c = load_config()
+print(" ".join(c[k].replace("%", "%%") for k in ("download_dir", "movies_dir", "series_dir") if " " not in c[k]))
+' 2>/dev/null || true)
+if [ -n "$MOUNTS" ]; then
+  sed -i "s|^Wants=network-online.target$|&\nRequiresMountsFor=$MOUNTS|" /etc/systemd/system/folder-mover.service
+fi
+
 systemctl daemon-reload
 systemctl enable folder-mover
 systemctl restart folder-mover

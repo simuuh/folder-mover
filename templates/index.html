@@ -1030,6 +1030,8 @@ function listenScan() {
       knownSeries = p.known_series || [];
       buildUI();
       toast(t('scan.found', { count: items.length }), 'info');
+      // e.g. media folder empty → NAS share probably not mounted
+      (p.warnings_i18n || []).forEach(w => toast(t(w.key, w.args || {}), 'warn', 12000));
     }, 400);
   };
   es.onerror = () => {

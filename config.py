@@ -26,6 +26,10 @@ DEFAULT_CONFIG = {
         "password": "changeme",
         "password_hash": "",
     },
+    # Name of a file/folder that must exist in movies_dir AND series_dir before
+    # anything is moved (e.g. ".folder-mover"). Protects against writing into
+    # the empty mountpoint of an NAS share that is not mounted. Empty = off.
+    "mount_marker": "",
     # Additional regexes for folder names that are pure wrappers (not the real
     # release). UUID folders are always treated as wrappers.
     "wrapper_patterns": [],
@@ -46,6 +50,7 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_HOST":          ("host",),
     "FOLDER_MOVER_PORT":          ("port",),
     "FOLDER_MOVER_LANGUAGE":      ("language",),
+    "FOLDER_MOVER_MOUNT_MARKER":  ("mount_marker",),
     "FOLDER_MOVER_SECRET_KEY":    ("secret_key",),
     "FOLDER_MOVER_USERNAME":      ("auth", "username"),
     "FOLDER_MOVER_PASSWORD":      ("auth", "password"),
@@ -119,6 +124,40 @@ def check_config(config: dict) -> list[str]:
         problems.append(f"{a} and {b} overlap ({os.path.realpath(config[a])} / {os.path.realpath(config[b])}) "
                         "— scan, move and delete are disabled until this is fixed")
     return problems
+
+
+MEDIA_KEYS = ("movies_dir", "series_dir")
+
+
+def missing_mount_markers(config: dict) -> list[str]:
+    """Media directories in which the configured `mount_marker` does not exist."""
+    marker = config.get("mount_marker") or ""
+    if not marker:
+        return []
+    return [config[key] for key in MEDIA_KEYS if not os.path.lexists(os.path.join(config[key], marker))]
+
+
+def library_warnings(config: dict) -> list[dict]:
+    """
+    i18n warnings ({key, args}) about media directories that look unmounted:
+    marker missing, folder missing, or completely empty.
+    """
+    warnings = []
+    missing = set(missing_mount_markers(config))
+    for key in MEDIA_KEYS:
+        path = config[key]
+        if path in missing:
+            warnings.append({"key": "scan.marker_missing", "args": {"path": path, "marker": config["mount_marker"]}})
+        elif not os.path.isdir(path):
+            warnings.append({"key": "scan.library_missing", "args": {"path": path}})
+        else:
+            try:
+                empty = not any(not e.name.startswith((".", "@")) for e in os.scandir(path))
+            except OSError:
+                empty = False
+            if empty:
+                warnings.append({"key": "scan.library_empty", "args": {"path": path}})
+    return warnings
 
 
 def video_extensions(config: dict) -> set[str]:

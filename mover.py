@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from config import PARTIAL_SUFFIX
+from config import PARTIAL_SUFFIX, missing_mount_markers
 from scanner import RE_SEASON_EP, RE_SxE, find_videos
 
 log = logging.getLogger(__name__)
@@ -203,6 +203,11 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
     if not source_release.exists():
         return _fail(source_release, _err("mover.source_missing", "Source no longer exists"))
+    # Re-checked per item: a share can drop out during a long batch
+    unmounted = missing_mount_markers(config)
+    if unmounted:
+        return _fail(source_release, _err("mover.marker_missing", f"Mount marker missing in {unmounted[0]}",
+                                          path=unmounted[0], marker=config["mount_marker"]))
 
     # ── Series: move only video files ─────────────────────────────────────────
     if move_type == "series":

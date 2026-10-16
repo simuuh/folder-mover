@@ -6,6 +6,12 @@ download_dir: /home/user/Downloads
 movies_dir: /mnt/Filme
 series_dir: /mnt/Serien
 
+# Safety net for NAS mounts: only move if this file/folder exists in movies_dir
+# AND series_dir (create it once: touch /mnt/Filme/.folder-mover /mnt/Serien/.folder-mover).
+# Without it, an unmounted share is just an empty local folder and moves would
+# silently fill the local disk. Empty = off.
+mount_marker: ""
+
 # ── Web Server ─────────────────────────────────────────────────────────────────
 host: 0.0.0.0
 port: 8080
