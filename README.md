@@ -33,8 +33,8 @@ moves everything into place after **you** confirmed it. With a live progress bar
 |---|---|
 | 🧠 **Smart classification** | `S01E01`, `S01` season packs, `1x01`, `Folge 01`, movies by year + quality tags |
 | 🪆 **Wrapper unwrapping** | UUID folders, hoster suffixes (`- rapidgator`), double-nested release folders — **also wrappers inside wrappers** and wrappers holding several releases |
-| 📚 **Library matching** | Fuzzy-matches against existing NAS series folders, so `The.Boys.S05` lands in your existing `The Boys/` |
-| 🔁 **Duplicate detection** | Finds an older release of the same movie and offers to replace it |
+| 📚 **Library matching** | Matches against existing NAS series folders (ignoring case, punctuation, articles, years and accents), so `The.Boys.S05` lands in your existing `The Boys (2019)/` — similar names are only suggested |
+| 🔁 **Duplicate detection** | Finds an older release of the same movie (title + year, also `Title (Year)` folders) and offers to replace it — the old one is deleted only after the new one arrived |
 | ⏳ **Unfinished downloads** | Releases with `.part` / `.crdownload` files are flagged and deselected |
 | ⚡ **Instant moves** | Same filesystem? Then it's a rename, not a copy |
 | 🐳 **Docker or bare metal** | Multi-arch image (amd64/arm64) or a systemd service |
@@ -80,7 +80,7 @@ Result on the NAS:
 
 ```text
 /mnt/Filme/M/Movie.2022.German.1080p.WEB-Group/
-/mnt/Filme/T/The.Sheriff.2026.German.1080p.WEB-SiXTYNiNE/
+/mnt/Filme/S/The.Sheriff.2026.German.1080p.WEB-SiXTYNiNE/    (leading articles are ignored)
 /mnt/Serien/Series Name/S05/series.s05e01.mkv
 ```
 

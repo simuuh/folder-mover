@@ -1,4 +1,5 @@
 import inspect
+import os
 from pathlib import Path
 
 import pytest
@@ -254,3 +255,69 @@ def test_wrapper_with_only_the_release_is_not_shared(config, dirs):
                                      "Movie.A.2020.German.1080p.WEB-GRP/a.mkv", f"{UUID_A}/@eaDir/x")
     item = scanner.scan_downloads(config)[0]
     assert item["is_wrapper"] and item["shared_wrapper"] is False
+
+
+@pytest.mark.parametrize("name", ["Sleep.2023.German.1080p.WEB.x264-GRP", "Creep.2014.German.1080p.BluRay.x264-GRP",
+                                  "Deep.2021.German.1080p.WEB.h264-GRP"])
+def test_title_ending_in_ep_is_no_episode(name):
+    assert scanner.classify(name)["type"] == "movie"
+
+
+@pytest.mark.parametrize("name, episode", [("Tatort.Folge.12.German", 12), ("Show.Episode.3.German", 3),
+                                           ("Show.Ep07.German", 7)])
+def test_folge_episode_still_recognised(name, episode):
+    assert scanner.classify(name)["episodes"] == [episode]
+
+
+@pytest.mark.parametrize("library, release", [("Preacher", "Reacher.S02E01.German.1080p.WEB.h264-GRP"),
+                                              ("Chuck", "Chucky.S01E01.German.1080p.WEB.h264-GRP")])
+def test_similar_series_name_is_only_a_hint(config, dirs, library, release):
+    (dirs["series_dir"] / library).mkdir()
+    make_files(dirs["download_dir"], f"{release}/{release}.mkv")
+    s = scanner.scan_downloads(config)[0]["suggestion"]
+    assert not s["match_auto"] and s["matched_existing"] == library     # shown as "~ Preacher"
+    assert s["series_name"] != library and library not in s["dest_dir"].split(os.sep)
+
+
+@pytest.mark.parametrize("library, release", [("Pokémon", "Pokemon.S01E01.German.WEB"),
+                                              ("Die Brücke", "Die.Bruecke.S02E01.German.WEB"),
+                                              ("The Boys (2019)", "The.Boys.S05E01.German.WEB")])
+def test_identical_series_name_is_matched_automatically(config, dirs, library, release):
+    (dirs["series_dir"] / library).mkdir()
+    make_files(dirs["download_dir"], f"{release}.mkv")
+    s = scanner.scan_downloads(config)[0]["suggestion"]
+    assert s["match_auto"] and s["series_name"] == library
+
+
+@pytest.mark.parametrize("existing, new, expected", [
+    ("I/Inception (2010)", "Inception.2010.German.DL.1080p.BluRay.x264-GRP", True),      # media-server naming
+    ("Inception [2010]", "Inception.2010.German.DL.1080p.BluRay.x264-GRP", True),       # flat library
+    ("H/Halloween", "Halloween.2018.German.DL.1080p.BluRay.x264-GRP", False),           # no year → no "replace"
+    ("H/Halloween (1978)", "Halloween.2018.German.DL.1080p.BluRay.x264-GRP", False),
+])
+def test_duplicates_in_media_server_libraries(tmp_path, existing, new, expected):
+    (tmp_path / existing).mkdir(parents=True)
+    found = scanner.MovieIndex(str(tmp_path)).find_duplicate(new, scanner.classify(new)["year"])
+    assert (found is not None) == expected
+
+
+def test_series_folder_without_episode_tag_is_classified_by_its_episodes(config, dirs):
+    make_files(dirs["download_dir"], "Breaking Bad/Breaking.Bad.S01E01.mkv", "Breaking Bad/Breaking.Bad.S01E02.mkv",
+               "Dark/Season 1/Dark.S01E01.mkv", "Dark/Season 2/Dark.S02E01.mkv",
+               "Babylon Berlin/Staffel 1/S01E01.mkv", "Babylon Berlin/Staffel 2/S02E01.mkv",
+               "Mixed/Show.S01E01.mkv", "Mixed/Show.S02E01.mkv")
+    by_dest = sorted(os.path.relpath(i["suggestion"]["dest_dir"], dirs["download_dir"].parent)
+                     for i in scanner.scan_downloads(config))
+    assert by_dest == sorted([
+        os.path.join("Serien", "Babylon Berlin", "S01"), os.path.join("Serien", "Babylon Berlin", "S02"),
+        os.path.join("Serien", "Breaking Bad", "S01"),
+        os.path.join("Serien", "Dark", "S01"), os.path.join("Serien", "Dark", "S02"),
+        os.path.join("Filme", "M", "Mixed"),             # two seasons in one folder → stays "unknown"
+    ])
+
+
+def test_letter_folder_ignores_articles_for_movies_and_unknown(config, dirs):
+    make_files(dirs["download_dir"], "The.Sheriff.2026.German.1080p.WEB-SiXTYNiNE/a.mkv",
+               "The.Sheriff.Directors.Cut/b.mkv")
+    letters = {Path(i["suggestion"]["dest_dir"]).parent.name for i in scanner.scan_downloads(config)}
+    assert letters == {"S"}

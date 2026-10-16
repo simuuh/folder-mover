@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import unicodedata
 from pathlib import Path
 
 from config import PARTIAL_SUFFIX, video_extensions
@@ -14,7 +15,10 @@ log = logging.getLogger(__name__)
 RE_SEASON_EP = re.compile(r"[Ss](\d{1,2})[Ee](\d{1,2})", re.IGNORECASE)
 RE_SEASON_ONLY = re.compile(r"(?:[._\- ]|(?<=\d))S(\d{1,2})(?![E\d])", re.IGNORECASE)
 RE_SxE = re.compile(r"(?<!\d)(\d{1,2})x(\d{2})(?!\d)", re.IGNORECASE)
-RE_FOLGE = re.compile(r"(?:Folge|Episode|Ep)[._\- ]?(\d{1,3})", re.IGNORECASE)
+# Not inside a word ("Sleep.2023" is no "Ep 202") and not the start of a year
+RE_FOLGE = re.compile(r"(?<![a-z])(?:Folge|Episode|Ep)[._\- ]?(\d{1,3})(?!\d)", re.IGNORECASE)
+# Season sub-folders without the series name ("Season 1", "Staffel 02", "S03")
+RE_SEASON_FOLDER = re.compile(r"^(?:(?:season|staffel)[._\- ]*\d{1,2}|s\d{1,2})$", re.IGNORECASE)
 RE_YEAR = re.compile(r"\b(19|20)\d{2}\b")
 RE_QUALITY = re.compile(
     r"\b(1080p|720p|2160p|4K|UHD|WEB|WEBRip|BluRay|BDRip|HDTV|NF|AMZN|DSNP|ATVP|PROPER|REPACK|EXTENDED)\b",
@@ -120,7 +124,7 @@ def _fuzzy_key(name: str) -> str:
     - remove punctuation, separators, years, quality tags
     - remove common release suffixes
     """
-    s = name
+    s = _ascii_fold(name)
     # Strip hoster/site suffixes like "- serienfans.org" or "- filecrypt.cc"
     s = RE_HOSTER_SUFFIX.sub("", s)
     # Strip articles
@@ -136,6 +140,15 @@ def _fuzzy_key(name: str) -> str:
     # Lowercase, keep only letters/digits
     s = re.sub(r"[^a-z0-9]", "", s.lower())
     return s.strip()
+
+
+_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe", "Ü": "Ue", "ß": "ss"})
+
+
+def _ascii_fold(s: str) -> str:
+    """'Die Brücke' → 'Die Bruecke', 'Pokémon' → 'Pokemon' (release names are ASCII)."""
+    s = unicodedata.normalize("NFC", s).translate(_UMLAUTS)
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
 
 
 def _token_similarity(a: str, b: str) -> float:
@@ -280,7 +293,8 @@ def find_releases(
         candidates = [c for c in subdirs if _contains_video(c, exts)]
         split = is_uuid_wrapper(name, extra_patterns) or (
             classify(name)["type"] == "unknown"
-            and sum(classify(c.name)["type"] != "unknown" for c in candidates) >= 2
+            and sum(classify(c.name)["type"] != "unknown" or bool(RE_SEASON_FOLDER.match(c.name))
+                    for c in candidates) >= 2
         )
         if split:
             for child in candidates:
@@ -374,7 +388,9 @@ def _clean_name(raw: str, keep_article: bool = True) -> str:
 
 # ── Destination suggestion ────────────────────────────────────────────────────
 
-MATCH_AUTO = 0.80   # score above this → use existing folder name automatically
+# Only an identical normalised name is used automatically: similar names are
+# often different shows ("Reacher" vs "Preacher" = 0.93, "Chucky" vs "Chuck")
+MATCH_AUTO = 1.0
 MATCH_HINT = 0.50   # score above this → suggest but mark uncertain
 DUPLICATE_THRESHOLD = 0.90  # movie titles must be (almost) identical to count as duplicate
 
@@ -460,7 +476,8 @@ def suggest_destination(
 
     else:
         folder_name = release_folder.name
-        first_char  = _first_letter(folder_name)
+        # Same letter rule as for movies (and the browser): parsed title, articles ignored
+        first_char  = _first_letter(classification.get("title") or folder_name)
         return {
             "type": "unknown",
             "title": classification.get("title") or folder_name,
@@ -476,23 +493,34 @@ def _first_letter(name: str) -> str:
     return letter if letter.isalpha() else "#"
 
 
+RE_ANY_YEAR = re.compile(r"[\s._\-]*[(\[]?\b((?:19|20)\d{2})\b[)\]]?")
+
+
 def _title_key(name: str) -> tuple[str, int | None]:
     """
-    (normalised title, year) of a movie release for duplicate detection.
+    (normalised title, year) of a movie release or library folder for
+    duplicate detection. Understands release names ("Dune.2021.German…") and
+    media-server folders ("Dune (2021)", "Dune [2021]", "Dune 2021").
 
     Only the title is compared — language/codec/source tags like
     "German.EAC3.DL" are shared by most releases and would otherwise dominate
     the similarity (Exit.8.2025… vs Elio.2025… scored 88 %).
     """
     c = classify(name)
-    title = ARTICLES.sub("", c.get("title") or "")
-    return re.sub(r"[^a-z0-9]", "", title.lower()), c.get("year")
+    title, year = c.get("title") or "", c.get("year")
+    if year is None:
+        m = RE_ANY_YEAR.search(name)
+        if m and m.start() > 0:
+            title, year = _clean_name(name[:m.start()]), int(m.group(1))
+    title = ARTICLES.sub("", _ascii_fold(title))
+    return re.sub(r"[^a-z0-9]", "", title.lower()), year
 
 
 class MovieIndex:
     """
     Lists movies_dir/<Letter>/<Release> once per scan (lazily, on the first
     movie) instead of walking the whole NAS movie tree for every movie found.
+    Movie folders directly in movies_dir (flat libraries) are indexed too.
     """
 
     def __init__(self, movies_dir: str):
@@ -506,8 +534,11 @@ class MovieIndex:
             return entries
         try:
             for letter_dir in sorted(self.movies_dir.iterdir()):
-                # only single-letter (and #) index folders
-                if not letter_dir.is_dir() or len(letter_dir.name) > 2 or is_ignored(letter_dir.name):
+                if not letter_dir.is_dir() or is_ignored(letter_dir.name):
+                    continue
+                if len(letter_dir.name) > 2:
+                    # not a letter folder → a movie of a flat library ("Dune (2021)")
+                    entries.append((letter_dir.name, str(letter_dir), _title_key(letter_dir.name)))
                     continue
                 for entry in letter_dir.iterdir():
                     if entry.is_dir() and not is_ignored(entry.name):
@@ -522,6 +553,9 @@ class MovieIndex:
         Existing folder with the same title+year but a different release name
         (e.g. another group). Searches all letter folders to catch releases that
         were filed under a different letter (The → T vs M).
+
+        Both sides need a year: "Replace" deletes the old folder, and without
+        years a remake ("Halloween.2018") would match the original ("Halloween").
         """
         new_key, new_year = _title_key(new_folder)
         year = year or new_year
@@ -532,7 +566,7 @@ class MovieIndex:
         for name, path, (existing_key, existing_year) in self._entries:
             if name == new_folder or not existing_key:
                 continue  # exact same name → handled by dest_exists
-            if year and existing_year and year != existing_year:
+            if not (year and existing_year) or year != existing_year:
                 continue
             if _token_similarity(new_key, existing_key) >= DUPLICATE_THRESHOLD:
                 return path
@@ -608,6 +642,30 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
     return items
 
 
+def _classify_by_videos(top_entry: Path, folder: Path, config: dict) -> dict | None:
+    """
+    Classification of a folder from its video file names — if they all are
+    episodes of one season of one series. Otherwise None (the folder stays
+    "unknown": several seasons in one folder can't go into one season folder).
+    """
+    videos = find_videos(folder, config)
+    if not videos:
+        return None
+    found = [classify(v.stem) for v in videos]
+    if any(c["type"] != "series" for c in found):
+        return None
+    if len({c["season"] for c in found}) != 1 or len({_fuzzy_key(c["series_name"] or "") for c in found}) != 1:
+        return None
+    result = dict(found[0])
+    if not result["series_name"]:
+        # "S01E01.mkv": the folder carries the name ("Dark/Season 1/" → "Dark")
+        named = folder.parent if RE_SEASON_FOLDER.match(folder.name) and folder != top_entry else folder
+        result["series_name"] = _clean_name(named.name)
+    result.update(episodes=sorted({e for c in found for e in c["episodes"]}),
+                  is_season_pack=len(videos) > 1, confidence="medium")
+    return result
+
+
 def _wrapper_has_other_content(top: Path, release: Path) -> bool:
     """
     True if a wrapper holds anything besides the path down to `release` — e.g.
@@ -633,6 +691,9 @@ def _process_release(
 ) -> dict:
     is_file = release.is_file()
     classification = classify(release.stem if is_file else release.name)
+    if classification["type"] == "unknown" and not is_file:
+        # "Breaking Bad/", "Dark/Season 1/": the folder name says nothing, the episodes do
+        classification = _classify_by_videos(top_entry, release, config) or classification
     suggestion     = suggest_destination(release, classification, config, library, movie_index)
 
     if is_file and suggestion["type"] != "series":
