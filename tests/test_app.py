@@ -258,3 +258,26 @@ def test_replace_path_is_validated(auth_client, dirs, replaced):
     replaced = replaced.format(movies=dirs["movies_dir"], downloads=dirs["download_dir"])
     resp = auth_client.post("/api/move", json={"moves": [_move(dirs, replaced_path=replaced)]})
     assert resp.status_code == 403 and resp.get_json()["error_key"] == "api.invalid_replace"
+
+
+@pytest.mark.parametrize("endpoint, body", [
+    ("/api/scan", {}),
+    ("/api/move", {"moves": [{}]}),
+    ("/api/delete", {"path": "x"}),
+    ("/api/delete-nas", {"path": "x"}),
+])
+def test_overlapping_dirs_block_file_operations(auth_client, dirs, endpoint, body):
+    # e.g. download_dir=/data, movies_dir=/data/Filme → the library would show up as "downloads"
+    app_module.config["movies_dir"] = str(dirs["download_dir"] / "Filme")
+    resp = auth_client.post(endpoint, json=body)
+    assert resp.status_code == 409 and resp.get_json()["error_key"] == "api.dirs_overlap"
+
+
+def test_overlap_detection(config, tmp_path):
+    from config import dir_overlaps
+    assert dir_overlaps(config) == []
+    assert dir_overlaps({**config, "series_dir": config["movies_dir"]}) == [("movies_dir", "series_dir")]
+    assert dir_overlaps({**config, "download_dir": str(tmp_path)}) == [("download_dir", "movies_dir"),
+                                                                        ("download_dir", "series_dir")]
+    # a common prefix is no overlap
+    assert dir_overlaps({**config, "series_dir": config["movies_dir"] + "2"}) == []

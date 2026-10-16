@@ -18,7 +18,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import history as hist
 import i18n
-from config import DEFAULT_PASSWORD, check_config, load_config
+from config import DEFAULT_PASSWORD, check_config, dir_overlaps, load_config
 from mover import execute_moves, get_progress, mark_failed, mark_pending
 from scanner import scan_downloads
 
@@ -191,6 +191,19 @@ def logout():
     return redirect(url_for("login"))
 
 
+def require_sane_dirs(f):
+    """Refuse file operations while download/media directories overlap."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        overlaps = dir_overlaps(config)
+        if overlaps:
+            a, b = overlaps[0]
+            log.error("Refused %s: %s and %s overlap", request.path, a, b)
+            return api_error("api.dirs_overlap", 409, a=config[a], b=config[b])
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ── Path validation ───────────────────────────────────────────────────────────
 
 def _is_within(path: str, root: str, allow_equal: bool = False) -> bool:
@@ -272,6 +285,7 @@ _scan_running = False
 
 @app.route("/api/scan", methods=["POST"])
 @require_auth
+@require_sane_dirs
 def api_scan():
     global _scan_running
     with _scan_lock:
@@ -339,6 +353,7 @@ def api_scan_progress():
 
 @app.route("/api/move", methods=["POST"])
 @require_auth
+@require_sane_dirs
 def api_move():
     global _move_running
     data = request.get_json(silent=True) or {}
@@ -413,6 +428,7 @@ def _delete_path(target: str):
 
 @app.route("/api/delete-nas", methods=["POST"])
 @require_auth
+@require_sane_dirs
 def api_delete_nas():
     data = request.get_json(silent=True) or {}
     path = data.get("path", "")
@@ -438,6 +454,7 @@ def api_delete_nas():
 
 @app.route("/api/delete", methods=["POST"])
 @require_auth
+@require_sane_dirs
 def api_delete():
     data = request.get_json(silent=True) or {}
     path = data.get("path") or data.get("source_top", "")
