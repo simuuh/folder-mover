@@ -134,9 +134,42 @@ behandelt wurden:
 - Für `/api/scan` ein explizites Timeout/Logging um die NAS-Zugriffe legen, damit
   ein hängender Mount sich wenigstens als Log-Zeile zeigt statt als stiller Hang.
 
-## Git-Setup
+## Git-Workflow (verbindlich)
 
-Aktiver Branch ist **`main`**. Es existiert zusätzlich ein lokaler Branch `mistral`
+**Nie direkt auf `main` committen.** `main` ist immer lauffähig/deploybar. Jede
+Änderung entsteht auf einem eigenen Branch, der vom aktuellen `main` abzweigt:
+
+| Präfix | Wofür | Beispiel |
+|---|---|---|
+| `feature/` | Neue Funktion, sichtbares neues Verhalten | `feature/jellyfin-refresh` |
+| `fix/` | Fehlerbehebung | `fix/history-counter` |
+| `chore/` | Alles ohne Verhaltensänderung: Doku, CI, Dependencies, Refactoring, Release | `chore/ci-minimal` |
+
+- Branch-Namen kurz, kleingeschrieben, mit Bindestrichen.
+- Commit-Messages mit passendem Präfix: `feat: …`, `fix: …`, `chore: …`
+  (Beschreibung auf Deutsch ist ok).
+- Ein Branch = ein Thema. Mehrere unabhängige Themen → mehrere Branches.
+- Vor dem Merge: `ruff check .` und `pytest` müssen grün sein.
+- Merge nach `main` per Pull Request oder lokal mit `git merge --no-ff <branch>`,
+  danach den Branch löschen.
+- Für Claude: zu Beginn jeder Aufgabe `git switch main && git pull` und dann
+  `git switch -c <präfix>/<name>`. Pushen und PRs öffnen nur, wenn der User es will.
+
+### Releases
+
+1. Branch `chore/release-x.y.z`: Version in `app.py` (`__version__`) **und**
+   `pyproject.toml` hochzählen (SemVer: `feature` → Minor, nur `fix` → Patch).
+2. Nach `main` mergen, dann `git tag vx.y.z && git push origin vx.y.z`.
+3. Der Tag startet `.github/workflows/release.yml` → Docker-Image auf
+   `ghcr.io/simuuh/folder-mover` (`x.y.z`, `x.y`, `latest`) + GitHub-Release.
+
+CI (`.github/workflows/ci.yml`) ist bewusst minimal (ein Job, Python 3.11, nur
+push auf `main` + PRs, keine Doku-only-Läufe) — beim Erweitern auf das
+GitHub-Free-Kontingent achten.
+
+### Sonstiges
+
+Es existiert zusätzlich ein lokaler Branch `mistral`
 mit einem alternativen, unfertigen Scanner-Refactoring (vereinfachte Klassifikation,
 keine `SeriesLibrary`-Klasse) — der ist **nicht** in `main` gemerged und sollte nicht
 versehentlich als Referenz für Änderungen an `main` verwendet werden, da die beiden
