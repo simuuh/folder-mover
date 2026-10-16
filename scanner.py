@@ -182,6 +182,10 @@ MAX_WRAPPER_DEPTH = 6
 EXTRA_DIRS = {"sample", "samples", "subs", "subtitles", "proof", "extras",
               "featurettes", "screens", "screenshots", "covers", "artwork"}
 
+# Sample clips ("release-sample.mkv", "sample.mkv", "Sample/…") are never episodes
+RE_SAMPLE = re.compile(r"(?:^|[._\- ])sample(?:[._\- ]|$)", re.IGNORECASE)
+SAMPLE_DIRS = {"sample", "samples"}
+
 # Suffixes of files that are still being downloaded/extracted
 PARTIAL_SUFFIXES = {".part", ".crdownload", ".partial", ".download", ".tmp", ".!qb", PARTIAL_SUFFIX}
 
@@ -413,7 +417,7 @@ def suggest_destination(
         dest_dir = os.path.join(config["series_dir"], series_name, season_str)
         season_exists = season_str in existing_seasons
 
-        video_files = _find_videos(release_folder, config)
+        video_files = find_videos(release_folder, config)
         video_base = release_folder.parent if release_folder.is_file() else release_folder
 
         return {
@@ -535,15 +539,22 @@ class MovieIndex:
         return None
 
 
-def _find_videos(folder: Path, config: dict) -> list[Path]:
+def is_sample(path: Path) -> bool:
+    return bool(RE_SAMPLE.search(path.stem))
+
+
+def find_videos(folder: Path, config: dict) -> list[Path]:
+    """Video files of a release — without samples and without Sample/ folders."""
     if folder.is_file():
         return [folder]
     exts = video_extensions(config)
     videos = []
-    for root, _, files in _walk(folder):
+    for root, dirs, files in _walk(folder):
+        dirs[:] = [d for d in dirs if d.lower() not in SAMPLE_DIRS]
         for f in files:
-            if Path(f).suffix.lower() in exts:
-                videos.append(Path(root) / f)
+            p = Path(root) / f
+            if p.suffix.lower() in exts and not is_sample(p):
+                videos.append(p)
     return sorted(videos)
 
 
