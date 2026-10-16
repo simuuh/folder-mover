@@ -16,6 +16,11 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   echo "User '$SERVICE_USER' does not exist. Set SERVICE_USER=<name>." >&2
   exit 1
 fi
+# Primary group of the user (not necessarily named like the user, e.g. "users")
+SERVICE_GROUP="$(id -gn "$SERVICE_USER")"
+if [ "$(id -u "$SERVICE_USER")" -eq 0 ]; then
+  echo "Warning: the service would run as root. Better: sudo SERVICE_USER=<user> bash install.sh" >&2
+fi
 
 cd "$(dirname "$0")"
 echo "==> Installing Folder Mover to $APP_DIR (service user: $SERVICE_USER)"
@@ -37,7 +42,7 @@ if [ ! -f "$APP_DIR/config.yaml" ]; then
   echo "  !! Edit $APP_DIR/config.yaml and set your paths + password !!"
   echo ""
 fi
-chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$APP_DIR"
 
 # ── Python venv ───────────────────────────────────────────────────────────────
 echo "==> Creating Python virtualenv"
@@ -47,7 +52,7 @@ python3 -m venv "$APP_DIR/venv"
 
 # ── Systemd ───────────────────────────────────────────────────────────────────
 echo "==> Installing systemd service"
-sed -e "s/^User=.*/User=$SERVICE_USER/" -e "s/^Group=.*/Group=$SERVICE_USER/" \
+sed -e "s/^User=.*/User=$SERVICE_USER/" -e "s/^Group=.*/Group=$SERVICE_GROUP/" \
     folder-mover.service > /etc/systemd/system/folder-mover.service
 
 # Start only once the configured folders (NAS mounts) are available

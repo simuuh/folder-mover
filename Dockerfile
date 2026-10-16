@@ -31,8 +31,9 @@ ENV PUID=1000 PGID=1000
 VOLUME /config
 EXPOSE 8080
 
+# Follows FOLDER_MOVER_PORT, like gunicorn.conf.py
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4)"
+  CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % (os.environ.get('FOLDER_MOVER_PORT') or '8080'), timeout=4)"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]
