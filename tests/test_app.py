@@ -315,3 +315,19 @@ def test_scan_warns_about_empty_or_unmarked_library(auth_client, dirs):
     (dirs["series_dir"] / ".folder-mover").touch()
     from config import library_warnings
     assert [w["key"] for w in library_warnings(app_module.config)] == ["scan.marker_missing"]
+
+
+@pytest.mark.parametrize("password", ["changeme", ""])
+def test_default_or_empty_password_disables_login(client, password):
+    app_module.config["auth"] = {"username": "admin", "password": password, "password_hash": ""}
+    page = client.get("/login")
+    assert page.status_code == 403 and "--hash-password" in page.get_data(as_text=True)
+    resp = client.post("/login", data={"username": "admin", "password": password})
+    assert resp.status_code == 403
+    assert client.get("/api/status").status_code == 401
+
+
+def test_hash_allows_login_even_if_plaintext_is_default(client):
+    app_module.config["auth"] = {"username": "admin", "password": "changeme",
+                                 "password_hash": generate_password_hash("hashed!")}
+    assert client.post("/login", data={"username": "admin", "password": "hashed!"}).status_code == 302
