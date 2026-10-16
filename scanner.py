@@ -597,14 +597,34 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
                 if release_key in seen_releases:
                     continue
                 seen_releases.add(release_key)
+                shared = len(releases) > 1 or _wrapper_has_other_content(entry, release)
                 items.append(_process_release(entry, release, config, library, movie_index,
-                                              shared_wrapper=len(releases) > 1))
+                                              shared_wrapper=shared))
         except Exception as e:
             log.warning("Error processing %s: %s", entry, e)
 
     emit("done", found=len(items), current_key="scan.found", current_args={"count": len(items)},
          known_series=library.all_names())
     return items
+
+
+def _wrapper_has_other_content(top: Path, release: Path) -> bool:
+    """
+    True if a wrapper holds anything besides the path down to `release` — e.g.
+    a second download that is still running (.part only, so not a release yet).
+    Then "delete" must only remove the release, never the whole wrapper.
+    """
+    if top == release:
+        return False
+    current = top
+    for part in release.relative_to(top).parts:
+        try:
+            if any(c.name != part and not is_ignored(c.name) for c in current.iterdir()):
+                return True
+        except OSError:
+            return True   # can't tell → be careful
+        current = current / part
+    return False
 
 
 def _process_release(
