@@ -99,3 +99,33 @@ def test_failed_copy_removes_partial_file(tmp_path, monkeypatch):
         mover._copy_with_progress(src, dst, boom)
     assert not dst.exists()
     assert src.exists()
+
+
+def test_failed_movie_copy_rolls_back_and_keeps_source(config, dirs, monkeypatch):
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/a.mkv", f"{rel}/b.nfo", f"{rel}/c.srt")
+    real_copy = mover._copy_with_progress
+    calls = []
+
+    def flaky_copy(src, dst, cb):
+        calls.append(src.name)
+        if len(calls) == 2:
+            raise OSError("NAS gone")
+        real_copy(src, dst, cb)
+
+    monkeypatch.setattr(mover, "_copy_with_progress", flaky_copy)
+    dest = dirs["movies_dir"] / "M" / rel
+    results = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "movie",
+    }], config)
+
+    assert not results[0]["ok"]
+    assert not dest.exists()                                   # rolled back
+    assert sorted(p.name for p in (dirs["download_dir"] / rel).iterdir()) == ["a.mkv", "b.nfo", "c.srt"]
+
+
+def test_series_progress_counts_only_video_files(dirs):
+    rel = dirs["download_dir"] / "Show.S01.German.1080p.WEB-GRP"
+    make_files(rel, "e01.mkv", "info.nfo", size=10)
+    assert mover._calc_size({"source_release": str(rel), "type": "series", "video_files": ["e01.mkv"]}) == 10

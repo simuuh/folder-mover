@@ -176,3 +176,19 @@ def test_delete_nas_refuses_media_root(auth_client, dirs):
 
 def test_history_limit_param_is_robust(auth_client):
     assert auth_client.get("/api/history?limit=abc").status_code == 200
+
+
+def test_logout_requires_post(auth_client):
+    assert auth_client.get("/logout").status_code == 405
+    assert auth_client.post("/logout").status_code == 302
+    assert auth_client.post("/api/scan").status_code == 401
+
+
+def test_index_does_not_leak_password(auth_client):
+    assert "s3cret" not in auth_client.get("/").get_data(as_text=True)
+
+
+def test_check_config_warns_about_overlap(config):
+    from config import check_config
+    config["movies_dir"] = config["download_dir"]
+    assert any("overlap" in p for p in check_config(config))

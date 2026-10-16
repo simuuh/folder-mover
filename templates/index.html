@@ -29,6 +29,7 @@
     gap: 10px;
     align-items: center;
   }
+  .logout-form { display: contents; }
 
   /* ── Buttons ── */
   .btn {
@@ -700,9 +701,11 @@
       <svg class="icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <a href="/logout" class="btn btn-icon" title="Abmelden" aria-label="Abmelden">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-    </a>
+    <form method="post" action="/logout" class="logout-form">
+      <button type="submit" class="btn btn-icon" title="Abmelden" aria-label="Abmelden">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </form>
   </div>
 </header>
 
@@ -864,8 +867,8 @@
 
 <script>
 // Server-side config values for building destination paths
-const MOVIES_DIR = {{ config.movies_dir | tojson }};
-const SERIES_DIR = {{ config.series_dir | tojson }};
+const MOVIES_DIR = {{ movies_dir | tojson }};
+const SERIES_DIR = {{ series_dir | tojson }};
 
 // ── State ──────────────────────────────────────────────────────────────────────
 // Every item gets a numeric key `_k`. Only that key ever ends up in the DOM —
@@ -1051,7 +1054,8 @@ function buildUI() {
       selected: !item.dest_exists && !s.duplicate_path && !item.incomplete,
       expanded: s.confidence !== 'high' || s.match_auto === false || item.incomplete,
       type: s.type,
-      seriesName: s.series_name || '',
+      // fallback = parsed title, used when the user switches a movie to "Serie"
+      seriesName: s.series_name || s.title || '',
       season: s.season || 1,
       movieName: item.release_name,
       destDir: s.dest_dir || '',              // authoritative from server

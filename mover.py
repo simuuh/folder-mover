@@ -231,17 +231,29 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         if space_error:
             return {"source_release": str(source_release), "ok": False, "error": space_error}
 
+        # Copy everything first and only delete the source once ALL files are
+        # on the NAS — otherwise a failure halfway leaves the release split
+        # between download dir and NAS.
         item_copied = 0
-        for fsrc, fdst in files_to_copy:
-            fdst.parent.mkdir(parents=True, exist_ok=True)
-            offset = item_copied
+        try:
+            for fsrc, fdst in files_to_copy:
+                fdst.parent.mkdir(parents=True, exist_ok=True)
+                offset = item_copied
 
-            def _cb(fname, ic, it, chunk, _off=offset):
-                on_chunk(fname, _off + ic, item_total, chunk)
+                def _cb(fname, ic, it, chunk, _off=offset):
+                    on_chunk(fname, _off + ic, item_total, chunk)
 
-            log.info("Copying: %s → %s", fsrc, fdst)
-            _copy_with_progress(fsrc, fdst, _cb)
-            item_copied += fsrc.stat().st_size
+                log.info("Copying: %s → %s", fsrc, fdst)
+                _copy_with_progress(fsrc, fdst, _cb)
+                item_copied += fsrc.stat().st_size
+        except BaseException:
+            # dest_dir did not exist before (checked above) → safe to roll back
+            log.warning("Copy failed, rolling back %s", dest_dir)
+            if dest_dir.is_dir():
+                shutil.rmtree(str(dest_dir), ignore_errors=True)
+            raise
+
+        for fsrc, _ in files_to_copy:
             fsrc.unlink(missing_ok=True)
 
         # Remove now-empty source tree
@@ -344,11 +356,21 @@ class _SpeedTracker:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _calc_size(move: dict) -> int:
+    """Bytes that will actually be copied for this move (for the overall progress bar)."""
     src = Path(move["source_release"])
     if not src.exists():
         return 0
     if src.is_file():
         return src.stat().st_size
+    if move.get("type") == "series" and move.get("video_files"):
+        # Series moves copy only the video files, not .nfo/.srt/samples
+        total = 0
+        for vf in move["video_files"]:
+            try:
+                total += (src / vf).stat().st_size
+            except OSError:
+                pass
+        return total
     total = 0
     for root, _, files in os.walk(src):
         for f in files:

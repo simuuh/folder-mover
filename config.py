@@ -57,6 +57,22 @@ def load_config(path: str | None = None) -> dict:
     return config
 
 
+def check_config(config: dict) -> list[str]:
+    """Human-readable problems with the configured directories (logged at startup)."""
+    problems = []
+    dirs = {key: os.path.realpath(config[key]) for key in ("download_dir", "movies_dir", "series_dir")}
+    for key, path in dirs.items():
+        if not os.path.isdir(path):
+            problems.append(f"{key} does not exist: {path}")
+    keys = list(dirs)
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            pa, pb = dirs[a], dirs[b]
+            if pa == pb or pa.startswith(pb + os.sep) or pb.startswith(pa + os.sep):
+                problems.append(f"{a} and {b} overlap ({pa} / {pb}) — moves/deletes may hit the wrong files")
+    return problems
+
+
 def video_extensions(config: dict) -> set[str]:
     """Configured video extensions, normalised to lowercase with a leading dot."""
     exts = config.get("video_extensions") or DEFAULT_CONFIG["video_extensions"]

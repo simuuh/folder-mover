@@ -170,3 +170,37 @@ def test_scan_missing_download_dir(config):
     config["download_dir"] = config["download_dir"] + "_missing"
     with pytest.raises(FileNotFoundError):
         scanner.scan_downloads(config)
+
+
+# ── Audit fixes ───────────────────────────────────────────────────────────────
+
+def test_nas_housekeeping_folders_are_ignored(config, dirs):
+    make_files(dirs["download_dir"],
+               "@eaDir/thumb.jpg", "#recycle/Old.Movie.2001.1080p.WEB-GRP/m.mkv", ".Trash-1000/x.mkv",
+               f"{UUID_A}/Movie.A.2020.1080p.WEB-GRP/a.mkv", f"{UUID_A}/@eaDir/a.mkv/SYNO_THUMB.jpg")
+    (dirs["series_dir"] / "@eaDir").mkdir()
+    items = scanner.scan_downloads(config)
+    assert [i["release_name"] for i in items] == ["Movie.A.2020.1080p.WEB-GRP"]
+    assert scanner.SeriesLibrary(config["series_dir"]).all_names() == []
+
+
+def test_weak_library_match_is_not_suggested(config, dirs):
+    (dirs["series_dir"] / "Completely Different Show").mkdir()
+    library = scanner.SeriesLibrary(config["series_dir"])
+    release = dirs["download_dir"] / "Xyz.S01E01.German.1080p.WEB-GRP.mkv"
+    make_files(dirs["download_dir"], release.name)
+    s = scanner.suggest_destination(release, scanner.classify(release.stem), config, library)
+    assert s["matched_existing"] is None and not s["match_auto"]
+
+
+def test_loose_episode_without_name_uses_stem(config, dirs):
+    make_files(dirs["download_dir"], "S01E01.mkv")
+    item = scanner.scan_downloads(config)[0]
+    assert not item["suggestion"]["series_name"].endswith(".mkv")
+
+
+def test_movie_duplicate_found_via_index(config, dirs):
+    (dirs["movies_dir"] / "D" / "Dune.2021.German.720p.BluRay-OLD").mkdir(parents=True)
+    make_files(dirs["download_dir"], "Dune.2021.German.1080p.WEB-NEW/dune.mkv")
+    item = scanner.scan_downloads(config)[0]
+    assert item["suggestion"]["duplicate_path"].endswith("Dune.2021.German.720p.BluRay-OLD")

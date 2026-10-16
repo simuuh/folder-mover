@@ -17,7 +17,7 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import history as hist
-from config import DEFAULT_PASSWORD, load_config
+from config import DEFAULT_PASSWORD, check_config, load_config
 from mover import execute_moves, get_progress, mark_failed, mark_pending
 from scanner import scan_downloads
 
@@ -37,6 +37,8 @@ app.config.update(
 
 if not config["auth"].get("password_hash") and config["auth"].get("password") == DEFAULT_PASSWORD:
     log.warning("Default password in use — set auth.password_hash in config.yaml!")
+for _problem in check_config(config):
+    log.warning("Config: %s", _problem)
 
 # Global move state (single-user tool: only one move at a time)
 _move_results: list = []
@@ -92,9 +94,12 @@ def _check_credentials(username: str, password: str) -> bool:
 def _login_blocked(ip: str) -> bool:
     now = time.monotonic()
     with _login_lock:
-        recent = [t for t in _login_failures.get(ip, []) if now - t < LOGIN_LOCKOUT_SECONDS]
-        _login_failures[ip] = recent
-        return len(recent) >= LOGIN_MAX_FAILURES
+        # Drop expired entries of all IPs so the dict cannot grow without bound
+        for key in list(_login_failures):
+            _login_failures[key] = [t for t in _login_failures[key] if now - t < LOGIN_LOCKOUT_SECONDS]
+            if not _login_failures[key]:
+                del _login_failures[key]
+        return len(_login_failures.get(ip, [])) >= LOGIN_MAX_FAILURES
 
 
 def _record_login_failure(ip: str):
@@ -124,8 +129,9 @@ def login():
     return render_template("login.html", error=error)
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
+    # POST only: a GET logout could be triggered by any foreign page/image
     session.clear()
     return redirect(url_for("login"))
 
@@ -174,7 +180,9 @@ def _validate_move(move: dict) -> str | None:
 @app.route("/")
 @require_auth
 def index():
-    return render_template("index.html", config=config, version=__version__)
+    # Only hand over what the page needs — never the auth section
+    return render_template("index.html", movies_dir=config["movies_dir"],
+                           series_dir=config["series_dir"], version=__version__)
 
 
 @app.route("/healthz")
