@@ -7,8 +7,10 @@ PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 
 if [ "$(id -u)" = "0" ]; then
-  # Only /config and its top-level files (config.yaml, history.jsonl, .secret_key)
-  find /config -maxdepth 1 -exec chown "$PUID:$PGID" {} +
+  # Only /config and its top-level files (config.yaml, history.jsonl, .secret_key).
+  # -h: change a symlink itself, never the file it points to — the app user
+  # can create entries in /config and must not get root to chown other files.
+  find /config -maxdepth 1 -exec chown -h "$PUID:$PGID" {} +
   exec setpriv --reuid="$PUID" --regid="$PGID" --clear-groups -- "$@"
 fi
 
