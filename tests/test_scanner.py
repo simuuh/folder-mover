@@ -204,3 +204,29 @@ def test_movie_duplicate_found_via_index(config, dirs):
     make_files(dirs["download_dir"], "Dune.2021.German.1080p.WEB-NEW/dune.mkv")
     item = scanner.scan_downloads(config)[0]
     assert item["suggestion"]["duplicate_path"].endswith("Dune.2021.German.720p.BluRay-OLD")
+
+
+@pytest.mark.parametrize("existing, new, expected", [
+    # different title, same year + same tags → NOT a duplicate (real-world false positive)
+    ("Elio.2025.German.EAC3.DL.1080p.BluRay.x265-VECTOR", "Exit.8.2025.German.EAC3.DL.1080p.BluRay.x264-NEXUS", False),
+    # same title + year, different release → duplicate
+    ("Dune.2021.German.720p.BluRay-OLD", "Dune.2021.German.DL.2160p.UHD.BluRay-NEW", True),
+    # same title, different year (remake) → not a duplicate
+    ("Dune.1984.German.1080p.BluRay-OLD", "Dune.2021.German.1080p.WEB-NEW", False),
+    # article and punctuation differences don't matter
+    ("Spider-Man.No.Way.Home.2021.German.1080p.WEB-A", "The.Spiderman.No.Way.Home.2021.German.720p.WEB-B", True),
+])
+def test_movie_duplicate_detection(tmp_path, existing, new, expected):
+    letter = (tmp_path / "X")
+    (letter / existing).mkdir(parents=True)
+    found = scanner.MovieIndex(str(tmp_path)).find_duplicate(new, scanner.classify(new)["year"])
+    assert (found is not None) == expected
+
+
+@pytest.mark.parametrize("name, title", [
+    ("Spider-Man.No.Way.Home.2021.German.1080p.WEB-GRP", "Spider-Man No Way Home"),
+    ("X-Men.2000.German.1080p.BluRay-GRP", "X-Men"),
+    ("Some Movie 2020 - serienfans.org", "Some Movie"),
+])
+def test_hyphenated_titles_and_hoster_suffix(name, title):
+    assert scanner.classify(name)["title"] == title

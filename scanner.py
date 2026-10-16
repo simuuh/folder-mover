@@ -24,6 +24,10 @@ RE_UUID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
 # Articles to preserve in display names but ignore when matching
+# Hoster/site suffix added by download managers: "Release - serienfans.org".
+# The space before the dash is required, otherwise "Spider-Man.No.Way.Home"
+# would be cut down to "Spider".
+RE_HOSTER_SUFFIX = re.compile(r"\s+-\s*\S+\.[a-z]{2,4}\s*$", re.IGNORECASE)
 ARTICLES = re.compile(r"^(the|der|die|das|ein|eine|les|le|la|los|las)\s+", re.IGNORECASE)
 
 # NAS/OS housekeeping entries that are never media (Synology @eaDir, #recycle, …)
@@ -117,7 +121,7 @@ def _fuzzy_key(name: str) -> str:
     """
     s = name
     # Strip hoster/site suffixes like "- serienfans.org" or "- filecrypt.cc"
-    s = re.sub(r"\s*-\s*\S+\.\w{2,4}\s*$", "", s)
+    s = RE_HOSTER_SUFFIX.sub("", s)
     # Strip articles
     s = ARTICLES.sub("", s)
     # Replace separators with space
@@ -356,7 +360,7 @@ def classify(release_name: str) -> dict:
 def _clean_name(raw: str, keep_article: bool = True) -> str:
     """Dots/underscores → spaces, strip hoster suffixes, optionally keep articles."""
     # Strip hoster suffix: "- serienfans.org" style
-    s = re.sub(r"\s*-\s*\S+\.\w{2,4}\s*$", "", raw)
+    s = RE_HOSTER_SUFFIX.sub("", raw)
     s = re.sub(r"[._]", " ", s).strip()
     # Remove trailing year
     s = re.sub(r"\s+\d{4}$", "", s).strip()
@@ -367,6 +371,7 @@ def _clean_name(raw: str, keep_article: bool = True) -> str:
 
 MATCH_AUTO = 0.80   # score above this → use existing folder name automatically
 MATCH_HINT = 0.50   # score above this → suggest but mark uncertain
+DUPLICATE_THRESHOLD = 0.90  # movie titles must be (almost) identical to count as duplicate
 
 
 def suggest_destination(
@@ -466,13 +471,17 @@ def _first_letter(name: str) -> str:
     return letter if letter.isalpha() else "#"
 
 
-def _title_key(name: str) -> str:
-    """Normalize a folder/title for duplicate detection: strip group, quality, keep title+year."""
-    s = re.sub(r"[._\-]", " ", name)
-    # Remove everything from quality tag onward
-    s = RE_QUALITY.split(s)[0]
-    s = re.sub(r"[^a-z0-9 ]", "", s.lower()).strip()
-    return s
+def _title_key(name: str) -> tuple[str, int | None]:
+    """
+    (normalised title, year) of a movie release for duplicate detection.
+
+    Only the title is compared — language/codec/source tags like
+    "German.EAC3.DL" are shared by most releases and would otherwise dominate
+    the similarity (Exit.8.2025… vs Elio.2025… scored 88 %).
+    """
+    c = classify(name)
+    title = ARTICLES.sub("", c.get("title") or "")
+    return re.sub(r"[^a-z0-9]", "", title.lower()), c.get("year")
 
 
 class MovieIndex:
@@ -483,9 +492,10 @@ class MovieIndex:
 
     def __init__(self, movies_dir: str):
         self.movies_dir = Path(movies_dir)
-        self._entries: list[tuple[str, str, str]] | None = None  # (name, path, title_key)
+        # (name, path, (title_key, year))
+        self._entries: list[tuple[str, str, tuple[str, int | None]]] | None = None
 
-    def _load(self) -> list[tuple[str, str, str]]:
+    def _load(self) -> list[tuple[str, str, tuple[str, int | None]]]:
         entries = []
         if not self.movies_dir.exists():
             return entries
@@ -508,17 +518,18 @@ class MovieIndex:
         (e.g. another group). Searches all letter folders to catch releases that
         were filed under a different letter (The → T vs M).
         """
-        new_key = _title_key(new_folder)
+        new_key, new_year = _title_key(new_folder)
+        year = year or new_year
         if not new_key:
             return None
         if self._entries is None:
             self._entries = self._load()
-        for name, path, existing_key in self._entries:
+        for name, path, (existing_key, existing_year) in self._entries:
             if name == new_folder or not existing_key:
                 continue  # exact same name → handled by dest_exists
-            if year and str(year) not in name:
+            if year and existing_year and year != existing_year:
                 continue
-            if _token_similarity(new_key, existing_key) >= 0.85:
+            if _token_similarity(new_key, existing_key) >= DUPLICATE_THRESHOLD:
                 return path
         return None
 
