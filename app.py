@@ -21,7 +21,7 @@ from config import DEFAULT_PASSWORD, check_config, load_config
 from mover import execute_moves, get_progress, mark_failed, mark_pending
 from scanner import scan_downloads
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
