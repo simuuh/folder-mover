@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from config import video_extensions
+from config import PARTIAL_SUFFIX, video_extensions
 
 log = logging.getLogger(__name__)
 
@@ -271,9 +271,14 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         if space_error:
             return _fail(source_release, space_error)
 
-        # Copy everything first and only delete the source once ALL files are
-        # on the NAS — otherwise a failure halfway leaves the release split
-        # between download dir and NAS.
+        # Copy everything into "<dest>.fmpart/" first and only give it its
+        # final name (and delete the source) once ALL files are on the NAS —
+        # a failure or crash halfway never leaves a release that looks complete.
+        staging = dest_dir if src.is_file() else _partial_path(dest_dir)
+        if staging != dest_dir:
+            if staging.exists():
+                shutil.rmtree(str(staging), ignore_errors=True)   # leftover of an interrupted move
+            files_to_copy = [(fsrc, staging / fdst.relative_to(dest_dir)) for fsrc, fdst in files_to_copy]
         item_copied = 0
         try:
             for fsrc, fdst in files_to_copy:
@@ -286,11 +291,16 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                 log.info("Copying: %s → %s", fsrc, fdst)
                 _copy_with_progress(fsrc, fdst, _cb)
                 item_copied += fsrc.stat().st_size
+            if staging != dest_dir:
+                staging.mkdir(exist_ok=True)   # release without any files
+                if dest_dir.exists():
+                    raise FileExistsError(errno.EEXIST, "Destination exists", str(dest_dir))
+                os.replace(staging, dest_dir)   # same folder → never EXDEV
         except BaseException:
-            # dest_dir did not exist before (checked above) → safe to roll back
-            log.warning("Copy failed, rolling back %s", dest_dir)
-            if dest_dir.is_dir():
-                shutil.rmtree(str(dest_dir), ignore_errors=True)
+            # staging belongs to this move only → safe to roll back
+            log.warning("Copy failed, rolling back %s", staging)
+            if staging != dest_dir and staging.is_dir():
+                shutil.rmtree(str(staging), ignore_errors=True)
             raise
 
         for fsrc, _ in files_to_copy:
@@ -308,9 +318,18 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
 # ── Chunked file copy ─────────────────────────────────────────────────────────
 
+def _partial_path(dst: Path) -> Path:
+    return dst.with_name(dst.name + PARTIAL_SUFFIX)
+
+
 def _copy_with_progress(src: Path, dst: Path, callback: Callable):
     """
     Copy src → dst in 4 MB chunks, firing callback per chunk after actual write.
+
+    The data is written to "<dst>.fmpart" and only renamed to `dst` once it is
+    complete and synced. If the process dies mid-copy (SIGKILL, OOM, power
+    loss, `docker stop`), only a clearly unfinished .fmpart file is left —
+    never a truncated file under the final name.
 
     fsync() is only forced every FSYNC_EVERY_BYTES (plus once at the end),
     not after every single 4 MB chunk. fsync on SMB/NFS is a blocking round-trip,
@@ -319,11 +338,15 @@ def _copy_with_progress(src: Path, dst: Path, callback: Callable):
     the progress/speed numbers reasonably accurate (re-anchored every ~64 MB)
     while avoiding hundreds of extra round-trips per file.
     """
+    if dst.exists():
+        raise FileExistsError(errno.EEXIST, "Destination exists", str(dst))
+    tmp = _partial_path(dst)
+    tmp.unlink(missing_ok=True)   # leftover of an interrupted earlier copy
     total = src.stat().st_size
     copied = 0
     since_last_sync = 0
     try:
-        with open(src, "rb") as fsrc, open(dst, "xb") as fdst:
+        with open(src, "rb") as fsrc, open(tmp, "xb") as fdst:
             while True:
                 buf = fsrc.read(CHUNK_SIZE)
                 if not buf:
@@ -340,21 +363,21 @@ def _copy_with_progress(src: Path, dst: Path, callback: Callable):
 
                 callback(src.name, copied, total, chunk)
 
-            # Always sync the tail so the file is fully on disk/NAS before we
-            # touch metadata or unlink the source.
+            # Always sync the tail so the file is fully on disk/NAS before it
+            # gets its final name and the source is unlinked.
             fdst.flush()
             os.fsync(fdst.fileno())
-    except FileExistsError:
-        raise
+        try:
+            shutil.copystat(str(src), str(tmp))
+        except OSError as e:
+            # SMB/NFS mounts often refuse timestamps/permissions — data is intact
+            log.debug("copystat failed for %s: %s", dst, e)
+        if dst.exists():
+            raise FileExistsError(errno.EEXIST, "Destination exists", str(dst))
+        os.replace(tmp, dst)
     except BaseException:
-        # Never leave a truncated file on the NAS that looks like a finished one
-        dst.unlink(missing_ok=True)
+        tmp.unlink(missing_ok=True)
         raise
-    try:
-        shutil.copystat(str(src), str(dst))
-    except OSError as e:
-        # SMB/NFS mounts often refuse timestamps/permissions — data is intact
-        log.debug("copystat failed for %s: %s", dst, e)
 
 
 # ── Rolling speed tracker ─────────────────────────────────────────────────────

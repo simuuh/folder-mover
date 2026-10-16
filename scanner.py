@@ -5,7 +5,7 @@ import os
 import re
 from pathlib import Path
 
-from config import video_extensions
+from config import PARTIAL_SUFFIX, video_extensions
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,8 @@ IGNORED_NAMES = {"#recycle", "#snapshot", "lost+found", "$recycle.bin", "system 
 
 
 def is_ignored(name: str) -> bool:
-    return name.startswith((".", "@")) or name.lower() in IGNORED_NAMES
+    return (name.startswith((".", "@")) or name.lower() in IGNORED_NAMES
+            or name.endswith(PARTIAL_SUFFIX))   # unfinished copy of the mover
 
 
 def _walk(path: Path):
@@ -182,7 +183,7 @@ EXTRA_DIRS = {"sample", "samples", "subs", "subtitles", "proof", "extras",
               "featurettes", "screens", "screenshots", "covers", "artwork"}
 
 # Suffixes of files that are still being downloaded/extracted
-PARTIAL_SUFFIXES = {".part", ".crdownload", ".partial", ".download", ".tmp", ".!qb"}
+PARTIAL_SUFFIXES = {".part", ".crdownload", ".partial", ".download", ".tmp", ".!qb", PARTIAL_SUFFIX}
 
 
 def is_strong_wrapper(name: str, extra_patterns: list[re.Pattern] | tuple = ()) -> bool:

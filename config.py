@@ -35,6 +35,9 @@ DEFAULT_CONFIG = {
 
 DEFAULT_PASSWORD = DEFAULT_CONFIG["auth"]["password"]
 
+# Suffix of files/folders the mover is still writing (renamed when complete)
+PARTIAL_SUFFIX = ".fmpart"
+
 # Environment variables override config.yaml (handy for Docker)
 ENV_OVERRIDES = {
     "FOLDER_MOVER_DOWNLOAD_DIR":  ("download_dir",),
