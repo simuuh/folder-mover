@@ -237,3 +237,20 @@ def test_unfinished_mover_copies_are_not_indexed(config, dirs):
     (dirs["series_dir"] / "Show.fmpart").mkdir()
     assert scanner.MovieIndex(config["movies_dir"]).find_duplicate("Dune.2021.German.1080p.WEB-NEW", 2021) is None
     assert scanner.SeriesLibrary(config["series_dir"]).all_names() == []
+
+
+def test_wrapper_with_unfinished_sibling_is_shared(config, dirs):
+    # Movie.B is still downloading (.part only) → not a release, but deleting
+    # Movie.A must not take the whole wrapper with it
+    make_files(dirs["download_dir"], f"{UUID_A}/Movie.A.2020.German.1080p.WEB-GRP/a.mkv",
+               f"{UUID_A}/Movie.B.2021.German.1080p.WEB-GRP/b.mkv.part")
+    items = scanner.scan_downloads(config)
+    assert [i["release_name"] for i in items] == ["Movie.A.2020.German.1080p.WEB-GRP"]
+    assert items[0]["shared_wrapper"] is True
+
+
+def test_wrapper_with_only_the_release_is_not_shared(config, dirs):
+    make_files(dirs["download_dir"], f"{UUID_A}/Movie.A.2020.German.1080p.WEB-GRP - hoster/"
+                                     "Movie.A.2020.German.1080p.WEB-GRP/a.mkv", f"{UUID_A}/@eaDir/x")
+    item = scanner.scan_downloads(config)[0]
+    assert item["is_wrapper"] and item["shared_wrapper"] is False
