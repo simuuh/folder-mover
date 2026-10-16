@@ -212,3 +212,49 @@ def test_secret_key_is_persisted(tmp_path, monkeypatch):
     assert (tmp_path / ".secret_key").read_text(encoding="utf-8") == first
     assert app_module._load_secret_key({}) == first
     assert app_module._load_secret_key({"secret_key": "fixed"}) == "fixed"
+
+
+def _wait_for_move(client):
+    for _ in range(100):
+        if not client.get("/api/status").get_json()["moving"]:
+            return
+        time.sleep(0.05)
+
+
+def test_replace_deletes_old_release_only_after_successful_move(auth_client, dirs):
+    old = dirs["movies_dir"] / "M" / "Movie.2022.German.720p.WEB-OLD"
+    make_files(old, "old.mkv")
+    make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/movie.mkv")
+    resp = auth_client.post("/api/move", json={"moves": [_move(dirs, replaced_path=str(old))]})
+    assert resp.get_json()["ok"]
+    _wait_for_move(auth_client)
+
+    assert (dirs["movies_dir"] / "M" / "Movie.2022.German.1080p.WEB-GRP" / "movie.mkv").exists()
+    assert not old.exists()
+    assert auth_client.get("/api/history").get_json()["entries"][0]["replaced_path"] == str(old)
+
+
+def test_replace_keeps_old_release_when_move_fails(auth_client, dirs):
+    old = dirs["movies_dir"] / "M" / "Movie.2022.German.720p.WEB-OLD"
+    make_files(old, "old.mkv")
+    make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/movie.mkv")
+    (dirs["movies_dir"] / "M" / "Movie.2022.German.1080p.WEB-GRP").mkdir()      # → "destination exists"
+    assert auth_client.post("/api/move", json={"moves": [_move(dirs, replaced_path=str(old))]}).get_json()["ok"]
+    _wait_for_move(auth_client)
+
+    assert (old / "old.mkv").exists()
+    entry = auth_client.get("/api/history").get_json()["entries"][0]
+    assert not entry["ok"] and entry["replaced_path"] is None
+
+
+@pytest.mark.parametrize("replaced", [
+    "/etc",                                     # outside the media dirs
+    "{movies}",                                 # the media root itself
+    "{movies}/M",                               # contains the new destination
+    "{movies}/M/Movie.2022.German.1080p.WEB-GRP/sub",   # inside the new destination
+    "{downloads}/Movie.2022.German.1080p.WEB-GRP",      # the source
+])
+def test_replace_path_is_validated(auth_client, dirs, replaced):
+    replaced = replaced.format(movies=dirs["movies_dir"], downloads=dirs["download_dir"])
+    resp = auth_client.post("/api/move", json={"moves": [_move(dirs, replaced_path=replaced)]})
+    assert resp.status_code == 403 and resp.get_json()["error_key"] == "api.invalid_replace"

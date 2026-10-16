@@ -84,7 +84,7 @@
   "delete.done": "\"{name}\" gelöscht",
 
   "replace.confirm_title": "Altes Release ersetzen?",
-  "replace.confirm_body": "Löscht:\n{old}\n\nVerschiebt dann:\n{new}",
+  "replace.confirm_body": "Verschiebt:\n{new}\n\nund löscht danach das alte Release:\n{old}",
   "replace.button": "Ersetzen",
 
   "action.rescan": "Neu scannen",
@@ -158,6 +158,7 @@
   "api.path_outside_media": "Pfad liegt ausserhalb der Medien-Verzeichnisse",
   "api.path_outside_downloads": "Pfad liegt ausserhalb des Download-Verzeichnisses",
   "api.path_not_found": "Pfad nicht gefunden",
+  "api.invalid_replace": "Ungültiges zu ersetzendes Release",
 
   "mover.source_missing": "Quelle existiert nicht mehr",
   "mover.file_not_found": "Datei nicht gefunden: {name}",
@@ -168,5 +169,6 @@
   "mover.file_changed": "Datei hat sich während des Kopierens geändert, nicht verschoben: {name}",
   "mover.source_leftover": "Während des Verschiebens neu entstandene Dateien sind im Download-Ordner geblieben: {path}",
   "mover.copy_failed": "Kopieren fehlgeschlagen: {name} ({error})",
-  "mover.unexpected": "Unerwarteter Fehler: {error}"
+  "mover.unexpected": "Unerwarteter Fehler: {error}",
+  "mover.replace_failed": "Altes Release konnte nicht gelöscht werden: {path} ({error})"
 }

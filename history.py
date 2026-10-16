@@ -31,7 +31,7 @@ def append(moves: list[dict], results: list[dict]):
             "error_i18n":    result.get("error_i18n") if not result.get("ok") else None,
             # warnings of a successful move (e.g. episode skipped because it already existed)
             "warnings_i18n": result.get("warnings_i18n") if result.get("ok") else None,
-            "replaced_path": move.get("replaced_path"),  # set when replacing existing NAS release
+            "replaced_path": result.get("replaced_path"),  # old NAS release deleted after this move
             "size_bytes":    result.get("size_bytes"),
         }
         entries.append(entry)
