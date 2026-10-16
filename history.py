@@ -27,6 +27,8 @@ def append(moves: list[dict], results: list[dict]):
             "dest":          move.get("dest_dir", ""),
             "ok":            result.get("ok", False),
             "error":         result.get("error") if not result.get("ok") else None,
+            # i18n keys of the error → shown in the language the user has *now*
+            "error_i18n":    result.get("error_i18n") if not result.get("ok") else None,
             "replaced_path": move.get("replaced_path"),  # set when replacing existing NAS release
             "size_bytes":    result.get("size_bytes"),
         }

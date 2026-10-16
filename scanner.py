@@ -553,18 +553,22 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
     if not dl_dir.exists():
         raise FileNotFoundError(f"Download directory not found: {dl_dir}")
 
-    def emit(phase: str, current: str = "", found: int = 0, **extra):
+    def emit(phase: str, current: str = "", found: int = 0, current_key: str | None = None,
+             current_args: dict | None = None, **extra):
+        # `current` is a file/folder name; status messages are sent as i18n
+        # keys (`current_key` + `current_args`) and translated in the browser
         if on_progress:
-            on_progress({"phase": phase, "current": current, "found": found, **extra})
+            on_progress({"phase": phase, "current": current, "found": found,
+                         "current_key": current_key, "current_args": current_args or {}, **extra})
 
-    emit("init", "Lese Download-Verzeichnis…")
+    emit("init", current_key="scan.reading_downloads")
 
     all_entries = sorted(e for e in dl_dir.iterdir() if not is_ignored(e.name))
 
-    emit("library", "Lade Serien-Bibliothek vom NAS…")
+    emit("library", current_key="scan.loading_library")
     library = SeriesLibrary(config["series_dir"])
     movie_index = MovieIndex(config["movies_dir"])
-    emit("library", f"{len(library.all_names())} Serien indexiert")
+    emit("library", current_key="scan.library_indexed", current_args={"count": len(library.all_names())})
 
     exts = video_extensions(config)
     wrapper_res = [re.compile(p, re.IGNORECASE) for p in config.get("wrapper_patterns") or []]
@@ -586,7 +590,7 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
         except Exception as e:
             log.warning("Error processing %s: %s", entry, e)
 
-    emit("done", f"{len(items)} Einträge gefunden", len(items),
+    emit("done", found=len(items), current_key="scan.found", current_args={"count": len(items)},
          known_series=library.all_names())
     return items
 

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ lang }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,6 +30,7 @@
     align-items: center;
   }
   .logout-form { display: contents; }
+  .btn-lang { font-family: var(--mono); font-size: 11px; font-weight: 700; min-width: 34px; justify-content: center; }
 
   /* ── Buttons ── */
   .btn {
@@ -695,14 +696,17 @@
   <div class="header-actions">
     <button class="btn btn-primary" id="btn-scan" onclick="doScan()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <span class="btn-label">Scan Downloads</span>
+      <span class="btn-label">{{ t('header.scan') }}</span>
     </button>
-    <button class="btn btn-icon" id="btn-theme" onclick="toggleTheme()" title="Hell/Dunkel umschalten" aria-label="Hell/Dunkel umschalten">
+    {% if languages | length > 1 %}
+    <button class="btn btn-icon btn-lang" id="btn-lang" onclick="cycleLanguage()" title="{{ t('header.language') }}" aria-label="{{ t('header.language') }}">{{ lang | upper }}</button>
+    {% endif %}
+    <button class="btn btn-icon" id="btn-theme" onclick="toggleTheme()" title="{{ t('header.theme') }}" aria-label="{{ t('header.theme') }}">
       <svg class="icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
     <form method="post" action="/logout" class="logout-form">
-      <button type="submit" class="btn btn-icon" title="Abmelden" aria-label="Abmelden">
+      <button type="submit" class="btn btn-icon" title="{{ t('header.logout') }}" aria-label="{{ t('header.logout') }}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
     </form>
@@ -714,12 +718,12 @@
   <div class="tab-nav" role="tablist">
     <button class="tab-btn active" id="tab-btn-scan" role="tab" onclick="switchTab('scan')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      Downloads
+      {{ t('tab.downloads') }}
       <span class="tab-badge" id="tab-badge-scan">0</span>
     </button>
     <button class="tab-btn" id="tab-btn-history" role="tab" onclick="switchTab('history')">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      Historie
+      {{ t('tab.history') }}
       <span class="tab-badge" id="tab-badge-history">—</span>
     </button>
   </div>
@@ -728,13 +732,13 @@
   <div id="tab-scan">
     <div id="state-empty" class="state-empty">
       <div class="icon">📂</div>
-      <p>Scan starten um Downloads zu erkennen.</p>
+      <p>{{ t('scan.empty') }}</p>
     </div>
 
     <div id="results-section" hidden>
       <div class="toolbar">
-        <button class="btn btn-sm" onclick="selectAll(true)">Alle wählen</button>
-        <button class="btn btn-sm" onclick="selectAll(false)">Keine</button>
+        <button class="btn btn-sm" onclick="selectAll(true)">{{ t('toolbar.select_all') }}</button>
+        <button class="btn btn-sm" onclick="selectAll(false)">{{ t('toolbar.select_none') }}</button>
         <span class="toolbar-label" id="toolbar-label"></span>
       </div>
       <div class="stats-bar" id="stats-bar"></div>
@@ -747,31 +751,31 @@
   <div id="tab-history" hidden>
     <div class="hist-toolbar">
       <div class="hist-filter">
-        <button class="hist-filter-btn active" onclick="setHistFilter('all', this)">Alle</button>
-        <button class="hist-filter-btn" onclick="setHistFilter('movie', this)">🎬 Filme</button>
-        <button class="hist-filter-btn" onclick="setHistFilter('series', this)">📺 Serien</button>
-        <button class="hist-filter-btn" onclick="setHistFilter('error', this)">⚠ Fehler</button>
+        <button class="hist-filter-btn active" onclick="setHistFilter('all', this)">{{ t('history.filter_all') }}</button>
+        <button class="hist-filter-btn" onclick="setHistFilter('movie', this)">{{ t('history.filter_movies') }}</button>
+        <button class="hist-filter-btn" onclick="setHistFilter('series', this)">{{ t('history.filter_series') }}</button>
+        <button class="hist-filter-btn" onclick="setHistFilter('error', this)">{{ t('history.filter_errors') }}</button>
       </div>
-      <input type="text" class="hist-search" placeholder="Suchen…" oninput="renderHistory()" id="hist-search" aria-label="Historie durchsuchen">
+      <input type="text" class="hist-search" placeholder="{{ t('history.search') }}" oninput="renderHistory()" id="hist-search" aria-label="{{ t('history.search_label') }}">
       <button class="btn btn-sm hist-refresh" onclick="loadHistory()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
-        Aktualisieren
+        {{ t('history.refresh') }}
       </button>
     </div>
     <div class="hist-table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Zeitpunkt</th>
-            <th>Release</th>
-            <th>Typ</th>
-            <th>Grösse</th>
-            <th>Ziel</th>
-            <th>Status</th>
+            <th>{{ t('history.col_time') }}</th>
+            <th>{{ t('history.col_release') }}</th>
+            <th>{{ t('history.col_type') }}</th>
+            <th>{{ t('history.col_size') }}</th>
+            <th>{{ t('history.col_dest') }}</th>
+            <th>{{ t('history.col_status') }}</th>
           </tr>
         </thead>
         <tbody id="hist-tbody">
-          <tr><td colspan="6" class="hist-empty">Noch keine Einträge.</td></tr>
+          <tr><td colspan="6" class="hist-empty">{{ t('history.none_yet') }}</td></tr>
         </tbody>
       </table>
     </div>
@@ -783,11 +787,11 @@
   <div class="action-bar-buttons">
     <button class="btn" onclick="doScan()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
-      Neu scannen
+      {{ t('action.rescan') }}
     </button>
     <button class="btn btn-success" id="btn-move" onclick="confirmMove()">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
-      Verschieben
+      {{ t('action.move') }}
     </button>
   </div>
 </div>
@@ -799,8 +803,8 @@
     <h3 id="confirm-title"></h3>
     <p id="confirm-body" class="modal-text"></p>
     <div class="modal-buttons">
-      <button class="btn" onclick="confirmResolve(false)">Abbrechen</button>
-      <button class="btn btn-primary" id="confirm-ok-btn" onclick="confirmResolve(true)">Bestätigen</button>
+      <button class="btn" onclick="confirmResolve(false)">{{ t('confirm.cancel') }}</button>
+      <button class="btn btn-primary" id="confirm-ok-btn" onclick="confirmResolve(true)">{{ t('confirm.ok') }}</button>
     </div>
   </div>
 </div>
@@ -809,14 +813,14 @@
   <div class="modal-box">
     <div class="prog-header">
       <span class="spinner"></span>
-      <h3 id="prog-title">Verschiebe Dateien…</h3>
+      <h3 id="prog-title">{{ t('progress.title') }}</h3>
       <span class="prog-items-count" id="prog-items-count"></span>
     </div>
 
     <!-- Overall progress -->
     <div class="prog-bar-wrap">
       <div class="prog-bar-label">
-        <span>Gesamt</span>
+        <span>{{ t('progress.overall') }}</span>
         <span id="prog-overall-pct">0%</span>
       </div>
       <div class="prog-bar-track">
@@ -839,19 +843,19 @@
     <!-- Stats -->
     <div class="prog-stats">
       <div class="prog-stat">
-        <span class="prog-stat-label">Kopiert</span>
+        <span class="prog-stat-label">{{ t('progress.copied') }}</span>
         <span class="prog-stat-value accent" id="prog-copied">—</span>
       </div>
       <div class="prog-stat">
-        <span class="prog-stat-label">Gesamt</span>
+        <span class="prog-stat-label">{{ t('progress.total') }}</span>
         <span class="prog-stat-value" id="prog-total">—</span>
       </div>
       <div class="prog-stat">
-        <span class="prog-stat-label">Speed</span>
+        <span class="prog-stat-label">{{ t('progress.speed') }}</span>
         <span class="prog-stat-value accent" id="prog-speed">—</span>
       </div>
       <div class="prog-stat">
-        <span class="prog-stat-label">ETA</span>
+        <span class="prog-stat-label">{{ t('progress.eta') }}</span>
         <span class="prog-stat-value" id="prog-eta">—</span>
       </div>
     </div>
@@ -860,7 +864,7 @@
 
     <button class="btn btn-primary" id="prog-close-btn" onclick="closeProgressOverlay()" hidden>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-      Schliessen
+      {{ t('progress.close') }}
     </button>
   </div>
 </div>
@@ -869,6 +873,46 @@
 // Server-side config values for building destination paths
 const MOVIES_DIR = {{ movies_dir | tojson }};
 const SERIES_DIR = {{ series_dir | tojson }};
+
+// ── i18n ──────────────────────────────────────────────────────────────────────
+// Catalog of the active language (translations/<lang>.json, completed with
+// German). Placeholders: {name}. `count: 1` picks the "<key>_one" form.
+const LANG = {{ lang | tojson }};
+const LANGUAGES = {{ languages | tojson }};
+const I18N = {{ i18n_catalog | tojson }};
+
+function _i18nKey(key, vars) {
+  return (vars.count === 1 && I18N[key + '_one'] !== undefined) ? key + '_one' : key;
+}
+
+function t(key, vars = {}) {
+  const text = I18N[_i18nKey(key, vars)] ?? key;
+  return text.replace(/\{(\w+)\}/g, (m, name) => (name in vars ? String(vars[name]) : m));
+}
+
+// Same as t(), but returns HTML: text escaped, values highlighted in <strong>
+function tStrong(key, vars = {}) {
+  const text = escHtml(I18N[_i18nKey(key, vars)] ?? key);
+  return text.replace(/\{(\w+)\}/g, (m, name) => (name in vars ? `<strong>${escHtml(vars[name])}</strong>` : m));
+}
+
+// Error text of a move result / history entry / progress error in the current
+// language (error_i18n = [{key, args}]), falling back to the server text
+function errorText(obj) {
+  if (obj && Array.isArray(obj.error_i18n) && obj.error_i18n.length) {
+    return obj.error_i18n.map(e => t(e.key, e.args || {})).join('; ');
+  }
+  return (obj && obj.error) || t('history.error');
+}
+
+function setLanguage(code) {
+  document.cookie = `fm-lang=${code}; path=/; max-age=31536000; SameSite=Lax`;
+  location.reload();
+}
+
+function cycleLanguage() {
+  setLanguage(LANGUAGES[(LANGUAGES.indexOf(LANG) + 1) % LANGUAGES.length]);
+}
 
 // ── State ──────────────────────────────────────────────────────────────────────
 // Every item gets a numeric key `_k`. Only that key ever ends up in the DOM —
@@ -888,8 +932,8 @@ function getCard(k) { return document.getElementById('card-' + k); }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
 function currentTheme() {
-  const t = document.documentElement.dataset.theme;
-  if (t) return t;
+  const theme = document.documentElement.dataset.theme;
+  if (theme) return theme;
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
@@ -916,7 +960,7 @@ async function api(url, body) {
   const r = await fetch(url, opts);
   if (r.status === 401) {
     window.location.href = '/login';
-    throw new Error('Nicht angemeldet');
+    throw new Error(t('api.not_authenticated'));
   }
   let data;
   try { data = await r.json(); } catch { throw new Error(`HTTP ${r.status}`); }
@@ -928,7 +972,9 @@ async function api(url, body) {
 function setScanBusy(busy) {
   const btn = document.getElementById('btn-scan');
   btn.disabled = busy;
-  btn.innerHTML = busy ? '<span class="spinner"></span> <span class="btn-label">Scanne…</span>' : SCAN_BTN_HTML;
+  btn.innerHTML = busy
+    ? `<span class="spinner"></span> <span class="btn-label">${escHtml(t('scan.busy'))}</span>`
+    : SCAN_BTN_HTML;
 }
 
 async function doScan() {
@@ -942,7 +988,7 @@ async function doScan() {
     await api('/api/scan', {});
   } catch (e) {
     hideScanStatus();
-    toast('Scan Fehler: ' + e.message, 'error');
+    toast(t('scan.error', { error: e.message }), 'error');
     document.getElementById('state-empty').hidden = false;
     setScanBusy(false);
     return;
@@ -966,21 +1012,21 @@ function listenScan() {
       hideScanStatus();
       setScanBusy(false);
       if (p.error) {
-        toast('Scan Fehler: ' + p.error, 'error', 8000);
+        toast(t('scan.error', { error: errorText(p) }), 'error', 8000);
         document.getElementById('state-empty').hidden = false;
         return;
       }
       items = p.items;
       knownSeries = p.known_series || [];
       buildUI();
-      toast(`${items.length} Einträge gefunden`, 'info');
+      toast(t('scan.found', { count: items.length }), 'info');
     }, 400);
   };
   es.onerror = () => {
     es.close();
     _scanSource = null;
     hideScanStatus();
-    toast('Scan-Verbindung unterbrochen', 'error');
+    toast(t('scan.connection_lost'), 'error');
     document.getElementById('state-empty').hidden = items.length > 0;
     setScanBusy(false);
   };
@@ -999,14 +1045,14 @@ function showScanStatus() {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </div>
       <div class="scan-status-text">
-        <div class="scan-status-phase" id="scan-phase">Initialisiere…</div>
+        <div class="scan-status-phase" id="scan-phase"></div>
         <div class="scan-status-current" id="scan-current"></div>
       </div>
       <div class="scan-status-counter" id="scan-counter"></div>
     `;
     document.getElementById('tab-scan').prepend(el);
   }
-  document.getElementById('scan-phase').textContent = 'Initialisiere…';
+  document.getElementById('scan-phase').textContent = t('scan.phase_start');
   document.getElementById('scan-current').textContent = '';
   document.getElementById('scan-counter').textContent = '';
   el.hidden = false;
@@ -1022,21 +1068,23 @@ function hideScanStatus() {
 }
 
 const SCAN_PHASES = {
-  init: 'Lese Download-Verzeichnis…',
-  library: 'Lade Serien-Bibliothek…',
-  scanning: 'Analysiere Releases…',
-  done: 'Scan abgeschlossen',
-  error: 'Fehler beim Scan',
+  init:     t('scan.phase_init'),
+  library:  t('scan.phase_library'),
+  scanning: t('scan.phase_scanning'),
+  done:     t('scan.phase_done'),
+  error:    t('scan.phase_error'),
 };
 
 function updateScanStatus(p) {
   if (SCAN_PHASES[p.phase]) document.getElementById('scan-phase').textContent = SCAN_PHASES[p.phase];
-  document.getElementById('scan-current').textContent = p.current || '';
+  // `current` is a file name; status messages arrive as i18n keys
+  document.getElementById('scan-current').textContent =
+    p.current_key ? t(p.current_key, p.current_args || {}) : (p.current || '');
 
   const counter = document.getElementById('scan-counter');
   if (p.found > 0) {
     counter.textContent = p.found;
-    counter.title = `${p.found} Einträge gefunden`;
+    counter.title = t('scan.found', { count: p.found });
   }
   if (p.phase === 'done') {
     document.getElementById('scan-status-panel')?.classList.add('scan-ok');
@@ -1054,7 +1102,7 @@ function buildUI() {
       selected: !item.dest_exists && !s.duplicate_path && !item.incomplete,
       expanded: s.confidence !== 'high' || s.match_auto === false || item.incomplete,
       type: s.type,
-      // fallback = parsed title, used when the user switches a movie to "Serie"
+      // fallback = parsed title, used when the user switches a movie to "series"
       seriesName: s.series_name || s.title || '',
       season: s.season || 1,
       movieName: item.release_name,
@@ -1076,18 +1124,18 @@ function buildUI() {
 }
 
 function renderStats() {
-  const count = t => items.filter(i => i.suggestion.type === t).length;
+  const count = type => items.filter(i => i.suggestion.type === type).length;
   const unknown = count('unknown');
   const incomplete = items.filter(i => i.incomplete).length;
   const totalBytes = items.reduce((a, i) => a + (i.size_bytes || 0), 0);
 
   document.getElementById('stats-bar').innerHTML = `
-    <div class="stat"><span>📦</span> <strong>${items.length}</strong> Einträge</div>
+    <div class="stat"><span>📦</span> ${tStrong('stats.entries', { count: items.length })}</div>
     <div class="stat-sep">|</div>
-    <div class="stat"><span>🎬</span> <strong>${count('movie')}</strong> Filme</div>
-    <div class="stat"><span>📺</span> <strong>${count('series')}</strong> Serien</div>
-    ${unknown ? `<div class="stat"><span>❓</span> <strong>${unknown}</strong> Unbekannt</div>` : ''}
-    ${incomplete ? `<div class="stat"><span>⏳</span> <strong>${incomplete}</strong> unvollständig</div>` : ''}
+    <div class="stat"><span>🎬</span> ${tStrong('stats.movies', { count: count('movie') })}</div>
+    <div class="stat"><span>📺</span> ${tStrong('stats.series', { count: count('series') })}</div>
+    ${unknown ? `<div class="stat"><span>❓</span> ${tStrong('stats.unknown', { count: unknown })}</div>` : ''}
+    ${incomplete ? `<div class="stat"><span>⏳</span> ${tStrong('stats.incomplete', { count: incomplete })}</div>` : ''}
     <div class="stat-sep">|</div>
     <div class="stat"><span>💾</span> <strong>${fmtSize(totalBytes)}</strong></div>
   `;
@@ -1103,9 +1151,21 @@ function renderItems() {
 }
 
 const TYPE_BADGE = {
-  movie:   ['badge-movie', 'Film'],
-  series:  ['badge-series', 'Serie'],
+  movie:   ['badge-movie', t('type.movie')],
+  series:  ['badge-series', t('type.series')],
   unknown: ['badge-unknown', '?'],
+};
+
+const TYPE_LABEL = {
+  movie:   '🎬 ' + t('type.movie'),
+  series:  '📺 ' + t('type.series'),
+  unknown: '❓ ' + t('type.unknown'),
+};
+
+const CONFIDENCE = {
+  high:   t('confidence.high'),
+  medium: t('confidence.medium'),
+  low:    t('confidence.low'),
 };
 
 function buildCard(item) {
@@ -1122,16 +1182,17 @@ function buildCard(item) {
 
   const [badgeClass, badgeLabel] = TYPE_BADGE[cs.type] || TYPE_BADGE.unknown;
   const confClass = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' }[s.confidence] || 'conf-low';
+  const confTitle = t('confidence.label', { level: CONFIDENCE[s.confidence] || s.confidence });
 
   card.innerHTML = `
     <div class="item-header" data-action="toggle" role="button" tabindex="0" aria-expanded="${cs.expanded}">
-      <div class="item-checkbox" data-action="select" role="checkbox" aria-checked="${cs.selected}" aria-label="Auswählen">
+      <div class="item-checkbox" data-action="select" role="checkbox" aria-checked="${cs.selected}" aria-label="${escHtml(t('card.select'))}">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
-      <div class="item-type-badge ${badgeClass}">${badgeLabel}</div>
-      <div class="confidence-dot ${confClass}" title="Erkennungssicherheit: ${escHtml(s.confidence)}"></div>
+      <div class="item-type-badge ${badgeClass}">${escHtml(badgeLabel)}</div>
+      <div class="confidence-dot ${confClass}" title="${escHtml(confTitle)}"></div>
       <div class="item-name" title="${escHtml(item.release_name)}">${escHtml(item.release_name)}</div>
-      ${item.incomplete ? '<div class="item-type-badge badge-warn" title="Enthält .part/.crdownload-Dateien — Download läuft evtl. noch">⏳ unvollständig</div>' : ''}
+      ${item.incomplete ? `<div class="item-type-badge badge-warn" title="${escHtml(t('card.incomplete_title'))}">${escHtml(t('card.incomplete_badge'))}</div>` : ''}
       <div class="item-size">${fmtSize(item.size_bytes)}</div>
     </div>
     <div class="item-body">${buildBody(item, cs)}</div>
@@ -1143,7 +1204,7 @@ function buildBody(item, cs) {
   const s = item.suggestion;
   let html = `
     <div class="field-row">
-      <div class="field-label">Quelle</div>
+      <div class="field-label">${escHtml(t('card.source'))}</div>
       <div class="field-value source">${escHtml(item.source_top)}</div>
     </div>`;
 
@@ -1151,23 +1212,22 @@ function buildBody(item, cs) {
     html += `
       <div class="field-row">
         <div class="field-label"></div>
-        <div class="wrapper-note">↳ Wrapper übersprungen, Release: <code>${escHtml(item.wrapper_path || item.release_name)}</code>
-          ${item.shared_wrapper ? ' · Wrapper enthält mehrere Releases' : ''}</div>
+        <div class="wrapper-note">${escHtml(t('card.wrapper_skipped'))} <code>${escHtml(item.wrapper_path || item.release_name)}</code>
+          ${item.shared_wrapper ? ' · ' + escHtml(t('card.wrapper_shared')) : ''}</div>
       </div>`;
   }
 
   if (item.incomplete) {
-    html += `<div class="note">⏳ Enthält unfertige Dateien (.part, .crdownload …) — der Download läuft vermutlich noch.</div>`;
+    html += `<div class="note">${escHtml(t('card.incomplete_note'))}</div>`;
   }
 
   html += `
     <div class="field-row">
-      <div class="field-label">Typ</div>
+      <div class="field-label">${escHtml(t('card.type'))}</div>
       <div>
-        <select class="select-type" data-action="type" aria-label="Typ">
-          <option value="movie"   ${cs.type === 'movie'   ? 'selected' : ''}>🎬 Film</option>
-          <option value="series"  ${cs.type === 'series'  ? 'selected' : ''}>📺 Serie</option>
-          <option value="unknown" ${cs.type === 'unknown' ? 'selected' : ''}>❓ Unbekannt</option>
+        <select class="select-type" data-action="type" aria-label="${escHtml(t('card.type'))}">
+          ${['movie', 'series', 'unknown'].map(type =>
+            `<option value="${type}" ${cs.type === type ? 'selected' : ''}>${escHtml(TYPE_LABEL[type])}</option>`).join('')}
         </select>
       </div>
     </div>`;
@@ -1176,34 +1236,34 @@ function buildBody(item, cs) {
     let matchBadge;
     const pct = Math.round((s.match_score || 0) * 100);
     if (s.match_auto && s.matched_existing) {
-      matchBadge = `<span class="match-badge match-auto" title="Automatisch gematcht (${pct}%)">✓ in Bibliothek</span>`;
+      matchBadge = `<span class="match-badge match-auto" title="${escHtml(t('card.match_auto_title', { pct }))}">${escHtml(t('card.match_auto'))}</span>`;
     } else if (s.matched_existing) {
-      matchBadge = `<span class="match-badge match-hint" title="Möglicher Treffer (${pct}%) — bitte prüfen">~ ${escHtml(s.matched_existing)}</span>`;
+      matchBadge = `<span class="match-badge match-hint" title="${escHtml(t('card.match_hint_title', { pct }))}">~ ${escHtml(s.matched_existing)}</span>`;
     } else {
-      matchBadge = `<span class="match-badge match-new">+ Neu</span>`;
+      matchBadge = `<span class="match-badge match-new">${escHtml(t('card.match_new'))}</span>`;
     }
 
     const existingSeasons = s.existing_seasons || [];
     const seasonStr = 'S' + String(cs.season).padStart(2, '0');
     let seasonBadge = '';
     if (existingSeasons.includes(seasonStr)) {
-      seasonBadge = `<span class="season-badge season-exists" title="Staffel existiert bereits — Episoden werden hinzugefügt">${seasonStr} vorhanden</span>`;
+      seasonBadge = `<span class="season-badge season-exists" title="${escHtml(t('card.season_exists_title'))}">${escHtml(t('card.season_exists', { season: seasonStr }))}</span>`;
     } else if (existingSeasons.length > 0) {
-      seasonBadge = `<span class="season-badge season-new">Neue Staffel · Vorhanden: ${escHtml(existingSeasons.join(', '))}</span>`;
+      seasonBadge = `<span class="season-badge season-new">${escHtml(t('card.season_new', { seasons: existingSeasons.join(', ') }))}</span>`;
     }
 
     html += `
       <div class="field-row">
-        <div class="field-label">Serie</div>
+        <div class="field-label">${escHtml(t('card.series'))}</div>
         <div class="edit-group">
           <div class="edit-row">
             <input type="text" class="input-grow" list="dl-series" value="${escHtml(cs.seriesName)}"
-              placeholder="Serienname" data-action="series-name" aria-label="Serienname">
+              placeholder="${escHtml(t('card.series_placeholder'))}" data-action="series-name" aria-label="${escHtml(t('card.series_placeholder'))}">
             ${matchBadge}
           </div>
           <div class="edit-row">
-            <span class="edit-label">Staffel</span>
-            <input type="number" value="${cs.season}" min="0" max="99" data-action="season" aria-label="Staffel">
+            <span class="edit-label">${escHtml(t('card.season'))}</span>
+            <input type="number" value="${cs.season}" min="0" max="99" data-action="season" aria-label="${escHtml(t('card.season'))}">
             ${seasonBadge}
           </div>
         </div>
@@ -1212,15 +1272,15 @@ function buildBody(item, cs) {
     if (s.video_files && s.video_files.length > 0) {
       html += `
         <div class="field-row">
-          <div class="field-label">Dateien</div>
+          <div class="field-label">${escHtml(t('card.files'))}</div>
           <div class="field-value">${s.video_files.map(f => `<div>${escHtml(basename(f))}</div>`).join('')}</div>
         </div>`;
     }
   } else {
     html += `
       <div class="field-row">
-        <div class="field-label">Zielname</div>
-        <div><input type="text" value="${escHtml(cs.movieName)}" data-action="movie-name" aria-label="Zielname"></div>
+        <div class="field-label">${escHtml(t('card.target_name'))}</div>
+        <div><input type="text" value="${escHtml(cs.movieName)}" data-action="movie-name" aria-label="${escHtml(t('card.target_name'))}"></div>
       </div>`;
   }
 
@@ -1228,7 +1288,7 @@ function buildBody(item, cs) {
   const warn = !isSeries && item.dest_exists;
   html += `
     <div class="field-row">
-      <div class="field-label">Ziel</div>
+      <div class="field-label">${escHtml(t('card.dest'))}</div>
       <div>
         <div class="dest-preview ${warn ? 'warn' : ''}" data-role="dest"></div>
       </div>
@@ -1237,18 +1297,18 @@ function buildBody(item, cs) {
   if (cs.type === 'movie' && s.duplicate_path) {
     html += `
       <div class="note">
-        <span>⚠ Anderes Release bereits vorhanden: <code>${escHtml(basename(s.duplicate_path))}</code></span>
-        <button class="btn btn-xs" data-action="replace">Altes ersetzen</button>
+        <span>${escHtml(t('card.duplicate'))} <code>${escHtml(basename(s.duplicate_path))}</code></span>
+        <button class="btn btn-xs" data-action="replace">${escHtml(t('card.replace'))}</button>
       </div>`;
   }
 
   html += `
     <div class="item-actions">
-      <button class="btn btn-danger" data-action="delete" title="Aus Download-Verzeichnis löschen">
+      <button class="btn btn-danger" data-action="delete" title="${escHtml(t('card.delete_title'))}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        Löschen
+        ${escHtml(t('card.delete'))}
       </button>
-      <button class="btn" data-action="skip">Überspringen</button>
+      <button class="btn" data-action="skip">${escHtml(t('card.skip'))}</button>
     </div>`;
 
   return html;
@@ -1267,10 +1327,10 @@ function updateDestPreview(k) {
   const item = itemByKey(k);
   let text = cs.destDir || '—';
   if (cs.type !== 'series' && item.dest_exists && cs.destDir === item.suggestion.dest_dir) {
-    text += ' ⚠ Ziel existiert bereits';
+    text += ' ' + t('card.dest_exists');
   }
   if (cs.type === 'series' && item.suggestion.season_exists) {
-    text += ' · Staffel vorhanden, Episoden werden ergänzt';
+    text += ' · ' + t('card.season_merge');
   }
   el.textContent = text;
 }
@@ -1358,16 +1418,16 @@ async function deleteItem(k) {
   // If the wrapper holds other releases, only delete this release
   const path = item.shared_wrapper ? item.source_release : item.source_top;
   const confirmed = await showConfirm(
-    `"${item.release_name}" löschen?`,
-    `Löscht: ${path}\n\nDies kann nicht rückgängig gemacht werden.`,
-    'Löschen'
+    t('delete.confirm_title', { name: item.release_name }),
+    t('delete.confirm_body', { path }),
+    t('delete.button')
   );
   if (!confirmed) return;
 
   try {
     await api('/api/delete', { path });
   } catch (err) {
-    toast('Löschen fehlgeschlagen: ' + err.message, 'error');
+    toast(t('delete.failed', { error: err.message }), 'error');
     return;
   }
 
@@ -1386,7 +1446,7 @@ async function deleteItem(k) {
   document.getElementById('tab-badge-scan').textContent = items.length;
   renderStats();
   updateSelectionInfo();
-  toast(`"${item.release_name}" gelöscht`, 'info');
+  toast(t('delete.done', { name: item.release_name }), 'info');
 }
 
 function sanitizeName(name) {
@@ -1400,7 +1460,7 @@ function rebuildDestDir(k) {
   const s    = item.suggestion;
 
   if (cs.type === 'series') {
-    const name   = sanitizeName(cs.seriesName) || 'Unbekannte Serie';
+    const name   = sanitizeName(cs.seriesName) || t('card.unknown_series');
     const season = 'S' + String(cs.season).padStart(2, '0');
     cs.destDir = `${SERIES_DIR}/${name}/${season}`;
   } else {
@@ -1421,16 +1481,17 @@ function getFirstChar(name) {
 function updateSelectionInfo() {
   const selected = items.filter(i => cardState[i._k]?.selected);
   const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
-  document.getElementById('toolbar-label').textContent = `${selected.length} von ${items.length} ausgewählt`;
+  document.getElementById('toolbar-label').textContent =
+    t('toolbar.selected', { selected: selected.length, total: items.length });
   document.getElementById('action-info').innerHTML =
-    `<strong>${selected.length}</strong> ausgewählt · <strong>${fmtSize(totalBytes)}</strong>`;
+    tStrong('action.info', { count: selected.length, size: fmtSize(totalBytes) });
   document.getElementById('btn-move').disabled = selected.length === 0;
 }
 
 // ── Confirm modal ─────────────────────────────────────────────────────────────
 let _confirmResolve = null;
 
-function showConfirm(title, body, okLabel = 'Bestätigen') {
+function showConfirm(title, body, okLabel = t('confirm.ok')) {
   document.getElementById('confirm-title').textContent = title;
   document.getElementById('confirm-body').textContent  = body;
   const ok = document.getElementById('confirm-ok-btn');
@@ -1456,17 +1517,17 @@ async function replaceNas(k) {
   const duplicatePath = item.suggestion.duplicate_path;
 
   const confirmed = await showConfirm(
-    'Altes Release ersetzen?',
-    `Löscht:\n${basename(duplicatePath)}\n\nVerschiebt dann:\n${item.release_name}`,
-    'Ersetzen'
+    t('replace.confirm_title'),
+    t('replace.confirm_body', { old: basename(duplicatePath), new: item.release_name }),
+    t('replace.button')
   );
   if (!confirmed) return;
 
   try {
     await api('/api/delete-nas', { path: duplicatePath });
-    toast(`"${basename(duplicatePath)}" gelöscht`, 'info');
+    toast(t('delete.done', { name: basename(duplicatePath) }), 'info');
   } catch (err) {
-    toast('Löschen fehlgeschlagen: ' + err.message, 'error');
+    toast(t('delete.failed', { error: err.message }), 'error');
     return;
   }
 
@@ -1483,11 +1544,11 @@ async function confirmMove(skipConfirm = false, replacedPath = null) {
     const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
     const incomplete = selected.filter(i => i.incomplete).length;
     const confirmed = await showConfirm(
-      `${selected.length} Einträge verschieben?`,
-      `${selected.length} Einträge · ${fmtSize(totalBytes)}` +
-      (incomplete ? `\n\n⚠ ${incomplete} davon sind evtl. noch nicht fertig heruntergeladen.` : '') +
-      `\n\nDies kann nicht rückgängig gemacht werden.`,
-      'Verschieben'
+      t('move.confirm_title', { count: selected.length }),
+      t('move.confirm_body', { count: selected.length, size: fmtSize(totalBytes) }) +
+      (incomplete ? '\n\n' + t('move.confirm_incomplete', { count: incomplete }) : '') +
+      '\n\n' + t('move.irreversible'),
+      t('move.button')
     );
     if (!confirmed) return;
   }
@@ -1509,7 +1570,7 @@ async function confirmMove(skipConfirm = false, replacedPath = null) {
   try {
     await api('/api/move', { moves });
   } catch (e) {
-    toast('Fehler: ' + e.message, 'error', 8000);
+    toast(t('move.error', { error: e.message }), 'error', 8000);
     return;
   }
 
@@ -1544,7 +1605,7 @@ function listenProgress() {
 
   es.onerror = () => {
     es.close();
-    toast('Verbindung zum Server verloren — Seite neu laden, um den Fortschritt wieder anzuzeigen', 'error', 8000);
+    toast(t('progress.connection_lost'), 'error', 8000);
     document.getElementById('progress-overlay').classList.remove('active');
   };
 }
@@ -1574,18 +1635,19 @@ function updateProgressUI(p) {
     p.speed_bps > 0 ? fmtSize(Math.round(p.speed_bps)) + '/s' : '—';
 
   const eta = document.getElementById('prog-eta');
-  if (p.finished) eta.textContent = 'Fertig';
+  if (p.finished) eta.textContent = t('progress.finished');
   else if (p.eta_seconds > 0) eta.textContent = fmtEta(p.eta_seconds);
   else eta.textContent = '—';
 
   if (p.errors && p.errors.length > 0) {
     const el = document.getElementById('prog-errors');
     el.hidden = false;
-    el.textContent = p.errors.join('\n');
+    el.textContent = p.errors.map(e => (typeof e === 'string' ? e : errorText(e))).join('\n');
   }
 
   if (p.finished) {
-    document.getElementById('prog-title').textContent = 'Abgeschlossen';
+    document.getElementById('prog-title').textContent = t('progress.done');
+    document.getElementById('prog-current-item').textContent = t('progress.finished');
     document.querySelector('#progress-overlay .spinner').hidden = true;
     document.getElementById('prog-close-btn').hidden = false;
   }
@@ -1595,7 +1657,7 @@ function closeProgressOverlay() {
   document.getElementById('progress-overlay').classList.remove('active');
   // Reset for next use
   document.getElementById('prog-close-btn').hidden = true;
-  document.getElementById('prog-title').textContent = 'Verschiebe Dateien…';
+  document.getElementById('prog-title').textContent = t('progress.title');
   document.querySelector('#progress-overlay .spinner').hidden = false;
   document.getElementById('prog-overall-bar').classList.remove('done');
   document.getElementById('prog-errors').hidden = true;
@@ -1604,8 +1666,8 @@ function closeProgressOverlay() {
 }
 
 function finishMove(results) {
-  // Overlay stays open — user clicks "Schliessen"
-  const ok    = results.filter(r => r.ok).length;
+  // Overlay stays open — user clicks "close"
+  const ok     = results.filter(r => r.ok).length;
   const failed = results.filter(r => !r.ok);
 
   _selectedForMove.forEach((item, idx) => {
@@ -1618,13 +1680,13 @@ function finishMove(results) {
       cardState[item._k].selected = false;
     } else {
       card.classList.add('error');
-      if (res) toast(`Fehler: ${res.error}`, 'error', 8000);
+      if (res) toast(t('move.error', { error: errorText(res) }), 'error', 8000);
     }
   });
   _selectedForMove = [];
 
-  if (ok > 0) toast(`${ok} Einträge erfolgreich verschoben`, 'success');
-  if (failed.length > 0) toast(`${failed.length} Fehler`, 'error');
+  if (ok > 0) toast(t('move.success', { count: ok }), 'success');
+  if (failed.length > 0) toast(t('move.failed_count', { count: failed.length }), 'error');
 
   updateSelectionInfo();
   loadHistory(true);
@@ -1687,7 +1749,7 @@ async function loadHistory(silent = false) {
     document.getElementById('tab-badge-history').textContent = data.total ?? _histEntries.length;
     renderHistory();
   } catch (e) {
-    if (!silent) toast('Historie konnte nicht geladen werden: ' + e.message, 'error');
+    if (!silent) toast(t('history.load_failed', { error: e.message }), 'error');
   }
 }
 
@@ -1715,19 +1777,20 @@ function renderHistory() {
   }
 
   if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="hist-empty">Keine Einträge gefunden.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="hist-empty">${escHtml(t('history.none_found'))}</td></tr>`;
     return;
   }
 
   tbody.innerHTML = entries.map(e => {
     const name    = escHtml(e.release_name || '—');
     const dest    = escHtml(e.dest || '—');
-    const typeLbl = { movie: '🎬 Film', series: '📺 Serie', unknown: '❓' }[e.type] || escHtml(e.type);
+    const typeLbl = escHtml(TYPE_LABEL[e.type] || e.type);
+    const err     = e.ok ? '' : escHtml(errorText(e));
     const status  = e.ok
       ? `<span class="ok-dot">✓</span>`
-      : `<span class="err-dot" title="${escHtml(e.error || '')}">✗ ${escHtml(e.error || 'Fehler')}</span>`;
+      : `<span class="err-dot" title="${err}">✗ ${err}</span>`;
     const replaced = e.replaced_path
-      ? `<div class="td-replaced" title="Ersetzt: ${escHtml(e.replaced_path)}">⇄ ${escHtml(basename(e.replaced_path))}</div>`
+      ? `<div class="td-replaced" title="${escHtml(t('history.replaced', { path: e.replaced_path }))}">⇄ ${escHtml(basename(e.replaced_path))}</div>`
       : '';
     return `
       <tr>

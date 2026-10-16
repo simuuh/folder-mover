@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ lang }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>folder.mover · Login</title>
+<title>folder.mover · {{ t('login.title') }}</title>
 <script>try{var t=localStorage.getItem('fm-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
@@ -91,6 +91,15 @@
   }
   button[type="submit"]:hover { background: var(--accent-hover); }
   button[type="submit"]:active { transform: scale(0.98); }
+
+  .lang-switch { display: flex; justify-content: center; gap: 6px; }
+  .lang-switch button {
+    background: none; border: 1px solid transparent; border-radius: 5px;
+    color: var(--muted); font-family: var(--mono); font-size: 11px;
+    padding: 3px 8px; cursor: pointer;
+  }
+  .lang-switch button:hover { color: var(--text); }
+  .lang-switch button.active { border-color: var(--border); color: var(--text); }
 </style>
 </head>
 <body>
@@ -103,15 +112,27 @@
 
   <form method="post" class="form-group">
     <div class="field">
-      <label for="username">Benutzername</label>
+      <label for="username">{{ t('login.username') }}</label>
       <input type="text" id="username" name="username" autocomplete="username" autofocus required>
     </div>
     <div class="field">
-      <label for="password">Passwort</label>
+      <label for="password">{{ t('login.password') }}</label>
       <input type="password" id="password" name="password" autocomplete="current-password" required>
     </div>
-    <button type="submit">Anmelden</button>
+    <button type="submit">{{ t('login.submit') }}</button>
   </form>
+
+  <nav class="lang-switch" aria-label="{{ t('header.language') }}">
+    {% for code in languages %}
+    <button type="button" class="{{ 'active' if code == lang }}" onclick="setLanguage('{{ code }}')">{{ code | upper }}</button>
+    {% endfor %}
+  </nav>
 </main>
+<script>
+function setLanguage(code) {
+  document.cookie = 'fm-lang=' + code + '; path=/; max-age=31536000; SameSite=Lax';
+  location.reload();
+}
+</script>
 </body>
 </html>

@@ -15,9 +15,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app.py config.py scanner.py mover.py history.py gunicorn.conf.py ./
+COPY app.py config.py scanner.py mover.py history.py i18n.py gunicorn.conf.py ./
 COPY templates templates
 COPY static static
+COPY translations translations
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod 755 /usr/local/bin/docker-entrypoint.sh \
