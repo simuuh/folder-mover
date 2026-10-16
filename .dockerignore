@@ -24,3 +24,5 @@ requirements-dev.txt
 pyproject.toml
 Dockerfile
 docker-compose.yml
+.env
+.env.example

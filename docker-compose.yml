@@ -1,24 +1,17 @@
-# Folder Mover — example compose file
-# Adjust the host paths on the left side of each volume and the user id.
+# Folder Mover — compose file
+# Nothing to edit here: copy .env.example to .env and adjust that file.
 
 services:
   folder-mover:
-    image: ghcr.io/simuuh/folder-mover:latest
+    image: ghcr.io/simuuh/folder-mover:${FM_VERSION:-latest}
     # build: .                      # or build the image locally
     container_name: folder-mover
     restart: unless-stopped
+    env_file: .env                  # PUID/PGID, TZ, FOLDER_MOVER_* login settings
     ports:
-      - "8080:8080"
-    environment:
-      # uid/gid that owns your downloads and media folders (`id <user>` on the host;
-      # often 1026/100 on Synology, 99/100 on Unraid)
-      PUID: 1000
-      PGID: 1000
-      FOLDER_MOVER_USERNAME: admin
-      FOLDER_MOVER_PASSWORD: changeme   # change this! (or set password_hash in ./config/config.yaml)
-      TZ: Europe/Zurich
+      - "${FM_PORT:-8080}:8080"
     volumes:
-      - ./config:/config                # config.yaml (optional), history, session secret
-      - /path/to/downloads:/downloads
-      - /path/to/media/Filme:/movies
-      - /path/to/media/Serien:/series
+      - ${FM_CONFIG_PATH:-./config}:/config
+      - ${FM_DOWNLOADS_PATH:?set FM_DOWNLOADS_PATH in .env}:/downloads
+      - ${FM_MOVIES_PATH:?set FM_MOVIES_PATH in .env}:/movies
+      - ${FM_SERIES_PATH:?set FM_SERIES_PATH in .env}:/series

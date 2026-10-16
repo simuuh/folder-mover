@@ -237,6 +237,10 @@ Python-Dateien/Ordner müssen in der `cp`-Zeile von `install.sh` **und** in den
   `/downloads`/`/movies`/`/series` chownen. Pfade im Container fix: `/downloads`, `/movies`,
   `/series`, `/config` (gesetzt über `FOLDER_MOVER_*`-Env-Variablen, die laut
   `config.py: ENV_OVERRIDES` Vorrang vor `config.yaml` haben).
+- Nutzer-Einstellungen gehören in `.env` (Vorlage `.env.example`, Git- und
+  Docker-ignoriert); `docker-compose.yml` enthält nur `${…}`-Platzhalter und
+  `env_file: .env`. Neue Docker-Optionen immer in `.env.example` dokumentieren.
+  Passwort-Hash in `.env` in **einfachen** Anführungszeichen (enthält `$`).
 - Session-Secret: ohne `secret_key` erzeugt `app.py: _load_secret_key()` einmalig
   `.secret_key` neben `history.jsonl` (im Container also in `/config`).
 - `mover.py: _try_rename()` verschiebt per `rename()`, wenn Quelle und Ziel auf

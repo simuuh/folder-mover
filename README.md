@@ -107,20 +107,23 @@ its siblings.
 ### 🐳 Docker (recommended for Synology, Unraid, TrueNAS …)
 
 ```bash
+mkdir folder-mover && cd folder-mover
 curl -O https://raw.githubusercontent.com/simuuh/folder-mover/main/docker-compose.yml
-nano docker-compose.yml        # host paths, user id, password
+curl -o .env https://raw.githubusercontent.com/simuuh/folder-mover/main/.env.example
+nano .env                      # host paths, PUID/PGID, password
 docker compose up -d
 ```
 
-Open `http://<host>:8080`. Inside the container the paths are fixed: `/downloads`,
-`/movies`, `/series` and `/config` (history, session secret and an optional
-`config.yaml`).
+Open `http://<host>:8080`. All settings live in `.env` — the compose file stays untouched,
+so updating is just `docker compose pull && docker compose up -d`.
 
 - **`PUID` / `PGID`** must be the uid/gid that owns your downloads and media (`id <user>` on the host).
-  The container fixes the owner of `/config` itself and then runs as that user.
-- **Hashed password:** `docker run --rm -it ghcr.io/simuuh/folder-mover python app.py --hash-password`,
-  then put it into `./config/config.yaml` as `auth.password_hash` (in compose env every `$` would
-  need to be written as `$$`).
+  The container fixes the owner of the config folder itself and then runs as that user.
+- **Hashed password:** `docker run --rm -it ghcr.io/simuuh/folder-mover python app.py --hash-password`
+  and paste the result into `.env` as `FOLDER_MOVER_PASSWORD_HASH='…'` — keep the **single quotes**,
+  the hash contains `$`.
+- Inside the container the paths are fixed: `/downloads`, `/movies`, `/series` and `/config`
+  (history, session secret and an optional `config.yaml`).
 
 <details>
 <summary><b>⚡ Instant moves instead of copying</b></summary>
@@ -130,12 +133,14 @@ instead of copying — done in milliseconds. Docker treats separate bind mounts 
 separate filesystems, so mount a common parent once and point the paths into it:
 
 ```yaml
+# docker-compose.override.yml (next to docker-compose.yml)
+services:
+  folder-mover:
     environment:
       FOLDER_MOVER_DOWNLOAD_DIR: /data/downloads
       FOLDER_MOVER_MOVIES_DIR:   /data/media/Filme
       FOLDER_MOVER_SERIES_DIR:   /data/media/Serien
     volumes:
-      - ./config:/config
       - /volume1/data:/data
 ```
 </details>
