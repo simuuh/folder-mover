@@ -407,6 +407,7 @@
   .toast.success { border-color: var(--green); color: var(--green); }
   .toast.error   { border-color: var(--red);   color: var(--red);   }
   .toast.info    { border-color: var(--accent); color: var(--accent); }
+  .toast.warn    { border-color: var(--orange); color: var(--orange); }
   @keyframes slideIn {
     from { opacity: 0; transform: translateX(20px); }
     to   { opacity: 1; transform: translateX(0); }
@@ -669,6 +670,7 @@
   .td-replaced { font-size: 10px; color: var(--orange); font-family: var(--mono); margin-top: 2px; }
   .ok-dot   { color: var(--green); font-weight: 700; }
   .err-dot  { color: var(--red);   font-weight: 700; }
+  .warn-dot { color: var(--orange); font-weight: 700; cursor: help; }
   .hist-empty {
     text-align: center;
     padding: 50px 20px;
@@ -903,6 +905,14 @@ function errorText(obj) {
     return obj.error_i18n.map(e => t(e.key, e.args || {})).join('; ');
   }
   return (obj && obj.error) || t('history.error');
+}
+
+// Warnings of a successful move result / history entry, or '' if there are none
+function warningText(obj) {
+  if (obj && Array.isArray(obj.warnings_i18n) && obj.warnings_i18n.length) {
+    return obj.warnings_i18n.map(w => t(w.key, w.args || {})).join('; ');
+  }
+  return (obj && Array.isArray(obj.warnings) && obj.warnings.join('; ')) || '';
 }
 
 function setLanguage(code) {
@@ -1678,6 +1688,8 @@ function finishMove(results) {
       card.classList.remove('selected', 'expanded', 'skipped');
       card.classList.add('done');
       cardState[item._k].selected = false;
+      const warning = warningText(res);
+      if (warning) toast(t('move.warning', { name: item.release_name, warning }), 'warn', 10000);
     } else {
       card.classList.add('error');
       if (res) toast(t('move.error', { error: errorText(res) }), 'error', 8000);
@@ -1786,8 +1798,9 @@ function renderHistory() {
     const dest    = escHtml(e.dest || '—');
     const typeLbl = escHtml(TYPE_LABEL[e.type] || e.type);
     const err     = e.ok ? '' : escHtml(errorText(e));
+    const warning = e.ok ? escHtml(warningText(e)) : '';
     const status  = e.ok
-      ? `<span class="ok-dot">✓</span>`
+      ? (warning ? `<span class="warn-dot" title="${warning}">✓ ⚠</span>` : `<span class="ok-dot">✓</span>`)
       : `<span class="err-dot" title="${err}">✗ ${err}</span>`;
     const replaced = e.replaced_path
       ? `<div class="td-replaced" title="${escHtml(t('history.replaced', { path: e.replaced_path }))}">⇄ ${escHtml(basename(e.replaced_path))}</div>`

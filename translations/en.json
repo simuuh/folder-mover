@@ -102,6 +102,7 @@
   "move.success": "{count} Einträge erfolgreich verschoben",
   "move.success_one": "{count} Eintrag erfolgreich verschoben",
   "move.failed_count": "{count} Fehler",
+  "move.warning": "{name}: {warning}",
 
   "confirm.cancel": "Abbrechen",
   "confirm.ok": "Bestätigen",
@@ -162,5 +163,8 @@
   "mover.file_not_found": "Datei nicht gefunden: {name}",
   "mover.dest_file_exists": "Ziel existiert bereits: {name}",
   "mover.dest_exists": "Ziel existiert bereits: {path}",
-  "mover.no_space": "Nicht genug Speicherplatz am Ziel: {need} GB benötigt, {free} GB frei"
+  "mover.no_space": "Nicht genug Speicherplatz am Ziel: {need} GB benötigt, {free} GB frei",
+  "mover.source_changed": "Download wird noch geschrieben (Dateien haben sich während des Kopierens geändert) – nichts verschoben",
+  "mover.file_changed": "Datei hat sich während des Kopierens geändert, nicht verschoben: {name}",
+  "mover.source_leftover": "Während des Verschiebens neu entstandene Dateien sind im Download-Ordner geblieben: {path}"
 }

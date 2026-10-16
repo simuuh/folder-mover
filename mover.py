@@ -44,6 +44,16 @@ def _err(key: str, text: str, **args) -> dict:
     return {"key": key, "args": args, "text": text}
 
 
+def _warnings(warnings: list[dict]) -> dict:
+    """`warnings` / `warnings_i18n` of a successful result (same shape as errors)."""
+    return {"warnings": [w["text"] for w in warnings] or None,
+            "warnings_i18n": [{"key": w["key"], "args": w["args"]} for w in warnings] or None}
+
+
+class _SourceChanged(Exception):
+    """The source release changed while it was being copied."""
+
+
 def _fail(source_release, *errors: dict) -> dict:
     return {"source_release": str(source_release), "ok": False,
             "error": "; ".join(e["text"] for e in errors),
@@ -219,12 +229,19 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
             log.info("Copying series file: %s → %s", src_file, dst_file)
             offset = item_copied
+            before = _stat_key(src_file)
 
             def _cb(fname, ic, it, chunk, _off=offset):
                 on_chunk(fname, _off + ic, item_total, chunk)
 
             _copy_with_progress(src_file, dst_file, _cb)
-            item_copied += src_file.stat().st_size
+            if _stat_key(src_file) != before:
+                # Still being written: the copy may be truncated → keep the source
+                dst_file.unlink(missing_ok=True)
+                errors.append(_err("mover.file_changed", f"File changed during the copy: {rel_path}",
+                                   name=rel_path))
+                continue
+            item_copied += before[0]
             src_file.unlink(missing_ok=True)
             moved.append(str(dst_file))
 
@@ -233,9 +250,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         if errors and not moved:
             return _fail(source_release, *errors)
         return {"source_release": str(source_release), "ok": True, "size_bytes": item_copied,
-                "moved_files": moved,
-                "warnings": [e["text"] for e in errors] or None,
-                "warnings_i18n": [{"key": e["key"], "args": e["args"]} for e in errors] or None}
+                "moved_files": moved, **_warnings(errors)}
 
     # ── Movie / Unknown: copy entire release folder ───────────────────────────
     else:
@@ -246,18 +261,13 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                                               path=str(dest_dir)))
 
         src = source_release
+        # What exists now is exactly what gets copied — and later deleted
+        snapshot = _snapshot(src)
         if src.is_file():
             files_to_copy = [(src, dest_dir)]
-            item_total = src.stat().st_size
         else:
-            files_to_copy = []
-            item_total = 0
-            for root, _, fnames in os.walk(src):
-                for fname in fnames:
-                    fsrc = Path(root) / fname
-                    fdst = dest_dir / fsrc.relative_to(src)
-                    files_to_copy.append((fsrc, fdst))
-                    item_total += fsrc.stat().st_size
+            files_to_copy = [(fsrc, dest_dir / fsrc.relative_to(src)) for fsrc in snapshot]
+        item_total = sum(size for size, _ in snapshot.values())
 
         # Same filesystem (e.g. Docker on the NAS): one atomic rename, no copy
         if _try_rename(src, dest_dir):
@@ -291,29 +301,41 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                 log.info("Copying: %s → %s", fsrc, fdst)
                 _copy_with_progress(fsrc, fdst, _cb)
                 item_copied += fsrc.stat().st_size
+            if _snapshot(src) != snapshot:
+                # Still being written/extracted: the copy may be incomplete
+                raise _SourceChanged
             if staging != dest_dir:
                 staging.mkdir(exist_ok=True)   # release without any files
                 if dest_dir.exists():
                     raise FileExistsError(errno.EEXIST, "Destination exists", str(dest_dir))
                 os.replace(staging, dest_dir)   # same folder → never EXDEV
-        except BaseException:
+        except BaseException as e:
             # staging belongs to this move only → safe to roll back
             log.warning("Copy failed, rolling back %s", staging)
-            if staging != dest_dir and staging.is_dir():
+            if staging.is_dir():
                 shutil.rmtree(str(staging), ignore_errors=True)
+            elif isinstance(e, _SourceChanged):
+                staging.unlink(missing_ok=True)   # loose file: copied by this move, now outdated
+            if isinstance(e, _SourceChanged):
+                return _fail(source_release, _err(
+                    "mover.source_changed", "Download is still being written (files changed during the copy)"))
             raise
 
+        # Delete only what was copied; files that appeared meanwhile stay
         for fsrc, _ in files_to_copy:
             fsrc.unlink(missing_ok=True)
-
-        # Remove now-empty source tree
-        if src.exists():
-            shutil.rmtree(str(src), ignore_errors=True)
+        warnings = []
+        if src.is_dir():
+            _remove_empty_dirs(src)
+            if src.exists():
+                log.warning("New files appeared during the move, kept: %s", src)
+                warnings.append(_err("mover.source_leftover", f"Files that appeared during the move were kept: {src}",
+                                     path=str(src)))
         if source_top != source_release and source_top.exists():
             _remove_if_empty(source_top)
 
         return {"source_release": str(source_release), "ok": True, "dest": str(dest_dir),
-                "size_bytes": item_total}
+                "size_bytes": item_total, **_warnings(warnings)}
 
 
 # ── Chunked file copy ─────────────────────────────────────────────────────────
@@ -458,6 +480,32 @@ def _cleanup_after_series_move(source_top: Path, source_release: Path, config: d
         shutil.rmtree(str(source_release), ignore_errors=True)
     if source_top != source_release and source_top.exists():
         _remove_if_empty(source_top)
+
+
+def _stat_key(path: Path) -> tuple[int, int]:
+    st = path.stat()
+    return st.st_size, st.st_mtime_ns
+
+
+def _snapshot(src: Path) -> dict[Path, tuple[int, int]]:
+    """{file: (size, mtime)} of a release (a single file or every file below a folder)."""
+    if src.is_file():
+        return {src: _stat_key(src)}
+    snap = {}
+    for root, _, fnames in os.walk(src):
+        for fname in fnames:
+            f = Path(root) / fname
+            snap[f] = _stat_key(f)
+    return snap
+
+
+def _remove_empty_dirs(path: Path):
+    """rmdir every empty folder below and including `path` — never deletes files."""
+    for root, _, _ in os.walk(path, topdown=False):
+        try:
+            os.rmdir(root)
+        except OSError:
+            pass
 
 
 def _existing_ancestor(path: Path) -> Path:
