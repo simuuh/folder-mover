@@ -13,6 +13,9 @@ DEFAULT_CONFIG = {
     "series_dir": "/mnt/Serien",
     "host": "0.0.0.0",
     "port": 8080,
+    # UI language: "auto" (browser language), or a catalog name like "de" / "en".
+    # The language switch in the header overrides this per browser.
+    "language": "auto",
     # Stable secret for session cookies. If empty, a random key is generated on
     # every start (everyone gets logged out on restart).
     "secret_key": "",
@@ -39,6 +42,7 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_SERIES_DIR":    ("series_dir",),
     "FOLDER_MOVER_HOST":          ("host",),
     "FOLDER_MOVER_PORT":          ("port",),
+    "FOLDER_MOVER_LANGUAGE":      ("language",),
     "FOLDER_MOVER_SECRET_KEY":    ("secret_key",),
     "FOLDER_MOVER_USERNAME":      ("auth", "username"),
     "FOLDER_MOVER_PASSWORD":      ("auth", "password"),

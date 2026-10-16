@@ -201,6 +201,24 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `FOLDER_MOVER_CONFIG` | path of the config file |
 | `FOLDER_MOVER_HISTORY` | path of `history.jsonl` (the session secret is stored next to it) |
 
+## 🌍 Languages
+
+The UI is available in **German** and **English** (switch in the header, or set
+`language` / `FOLDER_MOVER_LANGUAGE`; `auto` follows the browser).
+
+Translations are plain JSON files in [`translations/`](translations) — German
+(`de.json`) is the source, every other file only needs the same keys:
+
+```json
+"scan.found":     "{count} entries found",
+"scan.found_one": "{count} entry found"
+```
+
+- Keep `{placeholders}` exactly as in `de.json`; `_one` variants are used when `count` is 1.
+- Missing or empty entries fall back to German.
+- **New language:** copy `de.json` to e.g. `fr.json`, translate, restart — it shows up in the
+  language switch automatically. `pytest tests/test_i18n.py` checks keys and placeholders.
+
 ## 🔒 Security
 
 Folder Mover is built for a **single user on a LAN or VPN** — do not expose it to the
@@ -220,7 +238,6 @@ ruff check .                         # lint
 ```
 
 The frontend is plain HTML/CSS/JS in [`templates/`](templates) and [`static/`](static) — no build step.
-The UI language is German.
 
 ## 🗺️ Roadmap
 

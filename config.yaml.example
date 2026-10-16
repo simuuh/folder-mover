@@ -10,6 +10,10 @@ series_dir: /mnt/Serien
 host: 0.0.0.0
 port: 8080
 
+# UI language: auto (browser language), de or en. The switch in the header
+# overrides this per browser.
+language: auto
+
 # Secret for session cookies. If empty, one is generated once and stored in
 # `.secret_key` next to history.jsonl (sessions then survive restarts).
 secret_key: ""

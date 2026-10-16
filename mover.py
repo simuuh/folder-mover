@@ -36,6 +36,25 @@ def reset_progress():
         _progress.clear()
 
 
+def _err(key: str, text: str, **args) -> dict:
+    """
+    One error: an i18n key + args (translated in the browser, see
+    translations/*.json) and an English text for logs and API consumers.
+    """
+    return {"key": key, "args": args, "text": text}
+
+
+def _fail(source_release, *errors: dict) -> dict:
+    return {"source_release": str(source_release), "ok": False,
+            "error": "; ".join(e["text"] for e in errors),
+            "error_i18n": [{"key": e["key"], "args": e["args"]} for e in errors]}
+
+
+def _progress_error(result: dict) -> dict:
+    """Shape of an entry in the progress `errors` list (same keys as a result)."""
+    return {"error": result.get("error", "Unknown error"), "error_i18n": result.get("error_i18n")}
+
+
 def mark_pending(total_items: int):
     """Mark a move as started before the worker thread is up (avoids SSE races)."""
     with _progress_lock:
@@ -47,7 +66,7 @@ def mark_pending(total_items: int):
 def mark_failed(error: str):
     """Finish the progress state after an unexpected crash of the worker."""
     with _progress_lock:
-        _progress.setdefault("errors", []).append(error)
+        _progress.setdefault("errors", []).append({"error": error, "error_i18n": None})
         _progress.update(active=False, finished=True, speed_bps=0, eta_seconds=0)
 
 
@@ -107,13 +126,14 @@ def execute_moves(
             results.append(result)
             if not result["ok"]:
                 with _progress_lock:
-                    _progress["errors"].append(result.get("error", "Unknown error"))
+                    _progress["errors"].append(_progress_error(result))
 
         except Exception as e:
             log.exception("Move failed for %s", move.get("source_release"))
-            results.append({"source_release": move.get("source_release"), "ok": False, "error": str(e)})
+            result = {"source_release": move.get("source_release"), "ok": False, "error": str(e)}
+            results.append(result)
             with _progress_lock:
-                _progress["errors"].append(str(e))
+                _progress["errors"].append(_progress_error(result))
 
     if on_done:
         try:
@@ -127,7 +147,7 @@ def execute_moves(
         done_items=len(moves),
         copied_bytes=total_bytes,
         current_file="",
-        current_item="Fertig",
+        current_item="",
         speed_bps=0,
         eta_seconds=0,
     )
@@ -145,7 +165,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
     video_files    = move.get("video_files", [])
 
     if not source_release.exists():
-        return {"source_release": str(source_release), "ok": False, "error": "Source no longer exists"}
+        return _fail(source_release, _err("mover.source_missing", "Source no longer exists"))
 
     # ── Series: move only video files ─────────────────────────────────────────
     if move_type == "series":
@@ -174,7 +194,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         if not _same_device(source_base, dest_dir):
             space_error = _check_free_space(dest_dir, item_total)
             if space_error:
-                return {"source_release": str(source_release), "ok": False, "error": space_error}
+                return _fail(source_release, space_error)
 
         item_copied = 0
 
@@ -183,10 +203,11 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             dst_file = dest_dir / Path(rel_path).name
 
             if not src_file.exists():
-                errors.append(f"File not found: {rel_path}")
+                errors.append(_err("mover.file_not_found", f"File not found: {rel_path}", name=rel_path))
                 continue
             if dst_file.exists():
-                errors.append(f"Destination exists: {dst_file.name}")
+                errors.append(_err("mover.dest_file_exists", f"Destination exists: {dst_file.name}",
+                                   name=dst_file.name))
                 continue
 
             size = src_file.stat().st_size
@@ -210,17 +231,19 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         _cleanup_after_series_move(source_top, source_release, config)
 
         if errors and not moved:
-            return {"source_release": str(source_release), "ok": False, "error": "; ".join(errors)}
+            return _fail(source_release, *errors)
         return {"source_release": str(source_release), "ok": True, "size_bytes": item_copied,
-                "moved_files": moved, "warnings": errors or None}
+                "moved_files": moved,
+                "warnings": [e["text"] for e in errors] or None,
+                "warnings_i18n": [{"key": e["key"], "args": e["args"]} for e in errors] or None}
 
     # ── Movie / Unknown: copy entire release folder ───────────────────────────
     else:
         dest_dir.parent.mkdir(parents=True, exist_ok=True)
 
         if dest_dir.exists():
-            return {"source_release": str(source_release), "ok": False,
-                    "error": f"Destination already exists: {dest_dir}"}
+            return _fail(source_release, _err("mover.dest_exists", f"Destination already exists: {dest_dir}",
+                                              path=str(dest_dir)))
 
         src = source_release
         if src.is_file():
@@ -246,7 +269,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
         space_error = _check_free_space(dest_dir, item_total)
         if space_error:
-            return {"source_release": str(source_release), "ok": False, "error": space_error}
+            return _fail(source_release, space_error)
 
         # Copy everything first and only delete the source once ALL files are
         # on the NAS — otherwise a failure halfway leaves the release split
@@ -445,15 +468,16 @@ def _try_rename(src: Path, dst: Path) -> bool:
     return True
 
 
-def _check_free_space(dest_dir: Path, needed: int) -> str | None:
-    """Return an error message if the target filesystem cannot hold `needed` bytes."""
+def _check_free_space(dest_dir: Path, needed: int) -> dict | None:
+    """Return an error if the target filesystem cannot hold `needed` bytes."""
     try:
         free = shutil.disk_usage(_existing_ancestor(dest_dir)).free
     except OSError:
         return None  # can't tell (e.g. exotic mount) — let the copy decide
     if needed > free:
-        return (f"Not enough free space on target: need {needed / 1024**3:.1f} GB, "
-                f"{free / 1024**3:.1f} GB free")
+        need_gb, free_gb = f"{needed / 1024**3:.1f}", f"{free / 1024**3:.1f}"
+        return _err("mover.no_space", f"Not enough free space on target: need {need_gb} GB, {free_gb} GB free",
+                    need=need_gb, free=free_gb)
     return None
 
 

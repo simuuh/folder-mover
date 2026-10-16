@@ -72,6 +72,7 @@ worden (siehe Git-Historie) — beim Ändern von `scanner.py` immer gegen den ta
 | `gunicorn.conf.py` | Produktions-Server-Settings (liest host/port aus der Config) |
 | `templates/index.html` | Frontend (HTML+CSS+JS in einer Datei), kein Framework, kein Build |
 | `templates/login.html` | Login-Formular |
+| `i18n.py` + `translations/*.json` | Übersetzungen (DE = Quelle, EN), Sprachwahl |
 | `static/theme.css` | Gemeinsame Design-Tokens Dark/Light für beide Templates |
 | `tests/` | pytest-Suite (Scanner, Mover, API inkl. Pfad-Validierung) |
 
@@ -133,6 +134,26 @@ behandelt wurden:
   erneut zu walken.
 - Für `/api/scan` ein explizites Timeout/Logging um die NAS-Zugriffe legen, damit
   ein hängender Mount sich wenigstens als Log-Zeile zeigt statt als stiller Hang.
+
+## i18n (DE/EN)
+
+- `i18n.py` lädt `translations/*.json` (flach: `"bereich.name": "Text"`).
+  Platzhalter `{name}`; bei `count == 1` wird `<key>_one` genommen, falls vorhanden.
+  Fehlende/leere Einträge fallen auf Deutsch zurück.
+- Sprache pro Request: Cookie `fm-lang` (Umschalter im Header) → Config
+  `language` → `Accept-Language` (Haupt-Tag) → `de`.
+- **Jinja:** `{{ t('key', name=...) }}`. **JS:** `t('key', {name})`, für HTML mit
+  hervorgehobenen Werten `tStrong()`. Der Katalog wird als `I18N` in die Seite
+  eingebettet (kein Extra-Request). Keine dynamisch zusammengesetzten Schlüssel
+  (`'phase_' + x`) — der Test findet sie sonst nicht; stattdessen Maps.
+- **Server-Fehler fürs UI:** API-Antworten über `api_error("api.xyz", status)`
+  (übersetzt + stabiler `error_key`). Mover-Fehler über `_err(key, english_text,
+  **args)` → Ergebnis enthält `error` (Englisch, für Logs) und `error_i18n`
+  (`[{key, args}]`), wird so auch in `history.jsonl` gespeichert und im Browser
+  per `errorText()` in der aktuellen Sprache angezeigt. Scanner-Statusmeldungen
+  laufen als `current_key`/`current_args` im Progress-Event.
+- `tests/test_i18n.py` prüft: alle im Code verwendeten Schlüssel existieren in
+  `de.json`, alle Kataloge haben dieselben Schlüssel und Platzhalter.
 
 ## Git-Workflow (verbindlich)
 
@@ -202,8 +223,10 @@ Branches inkompatible `scanner.py`-Versionen haben.
   Build-Step. Farben nur über CSS-Variablen, damit Dark/Light funktionieren.
 - Konfiguration ist immer optional zu lesen über `config.get(key, default)` —
   `DEFAULT_CONFIG` in `config.py` ist die Quelle der Wahrheit für Defaults.
-- Deutsche UI-Strings (z. B. "Scanne…", "Verschiebe Dateien…") — bei neuen
-  UI-Texten konsistent auf Deutsch bleiben.
+- **Keine UI-Texte im Code.** Jeder sichtbare Text ist ein Schlüssel in
+  `translations/de.json` (Quelle, Deutsch) und `translations/en.json` (gleiche
+  Schlüssel; der User übersetzt selbst — neue Schlüssel dort zunächst mit dem
+  deutschen Text anlegen). Siehe Abschnitt „i18n“.
 
 ## Lokales Entwickeln/Testen
 

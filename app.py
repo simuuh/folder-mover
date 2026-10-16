@@ -17,6 +17,7 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import history as hist
+import i18n
 from config import DEFAULT_PASSWORD, check_config, load_config
 from mover import execute_moves, get_progress, mark_failed, mark_pending
 from scanner import scan_downloads
@@ -25,6 +26,7 @@ __version__ = "1.2.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
+
 
 def _load_secret_key(cfg: dict) -> str:
     """
@@ -71,6 +73,34 @@ _move_lock = threading.Lock()
 _move_running = False
 
 
+# ── i18n ──────────────────────────────────────────────────────────────────────
+
+def current_language() -> str:
+    return i18n.pick_language(request.cookies.get(i18n.COOKIE), config.get("language"),
+                              request.accept_languages)
+
+
+def _(key: str, **args) -> str:
+    """Translate for the current request."""
+    return i18n.translate(current_language(), key, **args)
+
+
+@app.context_processor
+def inject_i18n():
+    lang = current_language()
+    return {
+        "lang": lang,
+        "languages": i18n.LANGUAGES,
+        "t": lambda key, **args: i18n.translate(lang, key, **args),
+        "i18n_catalog": i18n.catalog(lang),
+    }
+
+
+def api_error(key: str, status: int, **args):
+    """JSON error in the user's language; `error_key` stays stable for API clients."""
+    return jsonify({"ok": False, "error": _(key, **args), "error_key": key}), status
+
+
 # ── Security headers ──────────────────────────────────────────────────────────
 
 @app.after_request
@@ -100,7 +130,7 @@ def require_auth(f):
         if not session.get("logged_in"):
             # API calls → 401 JSON, page calls → redirect
             if request.path.startswith("/api/"):
-                return jsonify({"ok": False, "error": "Not authenticated"}), 401
+                return api_error("api.not_authenticated", 401)
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return decorated
@@ -139,7 +169,7 @@ def login():
         ip = request.remote_addr or "?"
         if _login_blocked(ip):
             log.warning("Login blocked (too many failures) for %s", ip)
-            error = "Zu viele Fehlversuche. Bitte in ein paar Minuten erneut versuchen."
+            error = _("login.locked")
             return render_template("login.html", error=error), 429
         username = request.form.get("username", "")
         password = request.form.get("password", "")
@@ -150,7 +180,7 @@ def login():
             return redirect(url_for("index"))
         _record_login_failure(ip)
         log.warning("Failed login for user %r from %s", username, ip)
-        error = "Falscher Benutzername oder Passwort."
+        error = _("login.wrong")
     return render_template("login.html", error=error)
 
 
@@ -176,27 +206,27 @@ def _is_within(path: str, root: str, allow_equal: bool = False) -> bool:
 
 
 def _validate_move(move: dict) -> str | None:
-    """Return an error message if a client-supplied move is not allowed."""
+    """Return an i18n error key if a client-supplied move is not allowed."""
     if not isinstance(move, dict):
-        return "Invalid move"
+        return "api.invalid_move"
     src_rel = move.get("source_release")
     src_top = move.get("source_top")
     dest = move.get("dest_dir")
     if not all(isinstance(v, str) and v for v in (src_rel, src_top, dest)):
-        return "Missing paths"
+        return "api.missing_paths"
     if move.get("type") not in ("movie", "series", "unknown"):
-        return "Invalid type"
+        return "api.invalid_type"
     if not _is_within(src_top, config["download_dir"]):
-        return "Source outside download directory"
+        return "api.source_outside"
     if not _is_within(src_rel, src_top, allow_equal=True):
-        return "Release outside its source folder"
+        return "api.release_outside"
     target_root = config["series_dir"] if move["type"] == "series" else config["movies_dir"]
     if not _is_within(dest, target_root):
-        return "Destination outside media directory"
+        return "api.dest_outside"
     base = src_rel if os.path.isdir(src_rel) else os.path.dirname(src_rel)
     for vf in move.get("video_files") or []:
         if not isinstance(vf, str) or not _is_within(os.path.join(base, vf), base):
-            return "Invalid video file path"
+            return "api.invalid_video_path"
     return None
 
 
@@ -242,7 +272,8 @@ def api_scan():
             return jsonify({"ok": True, "message": "Scan already running"})
         _scan_running = True
         _scan_progress.clear()
-        _scan_progress.update({"phase": "init", "current": "Starte…", "found": 0, "done": False, "error": None})
+        _scan_progress.update({"phase": "init", "current": "", "found": 0, "done": False,
+                               "error": None, "error_i18n": None})
         _scan_results.clear()
 
     def run():
@@ -256,6 +287,11 @@ def api_scan():
             with _scan_lock:
                 _scan_results.extend(results)
                 _scan_progress.update({"phase": "done", "found": len(results), "done": True})
+        except FileNotFoundError as e:
+            log.error("Scan failed: %s", e)
+            with _scan_lock:
+                _scan_progress.update({"phase": "error", "error": str(e), "done": True, "error_i18n": [
+                    {"key": "scan.download_dir_missing", "args": {"path": config["download_dir"]}}]})
         except Exception as e:
             log.exception("Scan failed")
             with _scan_lock:
@@ -281,7 +317,7 @@ def api_scan_progress():
                 with _scan_lock:
                     results = list(_scan_results)
                 final = {"done": True, "items": results, "error": state.get("error"),
-                         "known_series": known_series}
+                         "error_i18n": state.get("error_i18n"), "known_series": known_series}
                 yield f"data: {json.dumps(final)}\n\n"
                 return
             time.sleep(0.15)
@@ -300,17 +336,17 @@ def api_move():
     data = request.get_json(silent=True) or {}
     moves = data.get("moves") or []
     if not isinstance(moves, list) or not moves:
-        return jsonify({"ok": False, "error": "No moves provided"}), 400
+        return api_error("api.no_moves", 400)
 
     for move in moves:
         err = _validate_move(move)
         if err:
             log.warning("Refused move %r: %s", move, err)
-            return jsonify({"ok": False, "error": err}), 403
+            return api_error(err, 403)
 
     with _move_lock:
         if _move_running:
-            return jsonify({"ok": False, "error": "Another move is already running"}), 409
+            return api_error("api.move_running", 409)
         _move_running = True
         _move_results.clear()
     mark_pending(len(moves))
@@ -373,16 +409,16 @@ def api_delete_nas():
     data = request.get_json(silent=True) or {}
     path = data.get("path", "")
     if not path or not isinstance(path, str):
-        return jsonify({"ok": False, "error": "No path provided"}), 400
+        return api_error("api.no_path", 400)
 
     # Safety: only allow deletion strictly inside movies_dir or series_dir
     if not (_is_within(path, config["movies_dir"]) or _is_within(path, config["series_dir"])):
         log.warning("Refused NAS delete outside media dirs: %s", path)
-        return jsonify({"ok": False, "error": "Path outside media directories"}), 403
+        return api_error("api.path_outside_media", 403)
 
     target = os.path.realpath(path)
     if not os.path.lexists(target):
-        return jsonify({"ok": False, "error": "Path not found"}), 404
+        return api_error("api.path_not_found", 404)
     try:
         _delete_path(target)
         log.info("Deleted NAS path: %s", target)
@@ -398,16 +434,16 @@ def api_delete():
     data = request.get_json(silent=True) or {}
     path = data.get("path") or data.get("source_top", "")
     if not path or not isinstance(path, str):
-        return jsonify({"ok": False, "error": "No path provided"}), 400
+        return api_error("api.no_path", 400)
 
     # Strictly inside download_dir — never the download_dir itself
     if not _is_within(path, config["download_dir"]):
         log.warning("Refused delete outside download_dir: %s", path)
-        return jsonify({"ok": False, "error": "Path outside download directory"}), 403
+        return api_error("api.path_outside_downloads", 403)
 
     target = os.path.realpath(path)
     if not os.path.lexists(target):
-        return jsonify({"ok": False, "error": "Path not found"}), 404
+        return api_error("api.path_not_found", 404)
     try:
         _delete_path(target)
         log.info("Deleted: %s", target)
