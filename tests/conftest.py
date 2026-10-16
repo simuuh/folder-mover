@@ -1,6 +1,11 @@
+import os
+import tempfile
 from pathlib import Path
 
 import pytest
+
+# Keep history.jsonl / .secret_key of the imported app out of the repo
+os.environ.setdefault("FOLDER_MOVER_HISTORY", os.path.join(tempfile.mkdtemp(), "history.jsonl"))
 
 UUID_A = "6d5b82f9-1111-2222-3333-444455556666"
 UUID_B = "aaaaaaaa-1111-2222-3333-444455556666"

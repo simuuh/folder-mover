@@ -18,3 +18,7 @@ worker_class = "gthread"
 threads = 16
 timeout = 120
 graceful_timeout = 30
+
+# gunicorn ≥ 25.1 opens a control socket in $HOME — not needed, and the Docker
+# user has no writable home. Older versions ignore this setting.
+control_socket_disable = True

@@ -192,3 +192,23 @@ def test_check_config_warns_about_overlap(config):
     from config import check_config
     config["movies_dir"] = config["download_dir"]
     assert any("overlap" in p for p in check_config(config))
+
+
+def test_env_overrides_config_file(tmp_path, monkeypatch):
+    from config import load_config
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text("download_dir: /from/file\nport: 1234\nauth: {username: fileuser}\n", encoding="utf-8")
+    monkeypatch.setenv("FOLDER_MOVER_DOWNLOAD_DIR", "/downloads")
+    monkeypatch.setenv("FOLDER_MOVER_PORT", "9090")
+    monkeypatch.setenv("FOLDER_MOVER_PASSWORD_HASH", "scrypt:abc")
+    cfg = load_config(str(cfg_file))
+    assert cfg["download_dir"] == "/downloads" and cfg["port"] == 9090
+    assert cfg["auth"] == {"username": "fileuser", "password": "changeme", "password_hash": "scrypt:abc"}
+
+
+def test_secret_key_is_persisted(tmp_path, monkeypatch):
+    monkeypatch.setattr(history, "HISTORY_FILE", tmp_path / "history.jsonl")
+    first = app_module._load_secret_key({})
+    assert (tmp_path / ".secret_key").read_text(encoding="utf-8") == first
+    assert app_module._load_secret_key({}) == first
+    assert app_module._load_secret_key({"secret_key": "fixed"}) == "fixed"

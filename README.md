@@ -10,6 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/simuuh/folder-mover?color=3ecf76" alt="License: MIT"></a>
   <br>
   <img src="https://img.shields.io/badge/self--hosted-✓-4f8ef7" alt="Self-hosted">
+  <a href="https://github.com/simuuh/folder-mover/pkgs/container/folder-mover"><img src="https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white" alt="Docker image"></a>
   <img src="https://img.shields.io/badge/no%20build%20step-vanilla%20JS-f59e0b" alt="Vanilla JS">
   <img src="https://img.shields.io/badge/theme-dark%20%7C%20light-252a35" alt="Dark and light theme">
   <a href="https://github.com/simuuh/folder-mover/commits/main"><img src="https://img.shields.io/github/last-commit/simuuh/folder-mover" alt="Last commit"></a>
@@ -35,6 +36,8 @@ moves everything into place after **you** confirmed it. With a live progress bar
 | 📚 **Library matching** | Fuzzy-matches against existing NAS series folders, so `The.Boys.S05` lands in your existing `The Boys/` |
 | 🔁 **Duplicate detection** | Finds an older release of the same movie and offers to replace it |
 | ⏳ **Unfinished downloads** | Releases with `.part` / `.crdownload` files are flagged and deselected |
+| ⚡ **Instant moves** | Same filesystem? Then it's a rename, not a copy |
+| 🐳 **Docker or bare metal** | Multi-arch image (amd64/arm64) or a systemd service |
 | 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload |
 | 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; no half-copied files left behind; all paths validated server-side |
 | 🗂️ **History** | Searchable log of every move, filterable by type and errors |
@@ -101,6 +104,43 @@ its siblings.
 
 ## 🚀 Quick start
 
+### 🐳 Docker (recommended for Synology, Unraid, TrueNAS …)
+
+```bash
+curl -O https://raw.githubusercontent.com/simuuh/folder-mover/main/docker-compose.yml
+nano docker-compose.yml        # host paths, user id, password
+docker compose up -d
+```
+
+Open `http://<host>:8080`. Inside the container the paths are fixed: `/downloads`,
+`/movies`, `/series` and `/config` (history, session secret and an optional
+`config.yaml`).
+
+- **`user:`** must be the uid:gid that owns your downloads and media (`id <user>` on the host).
+- **Hashed password:** `docker run --rm -it ghcr.io/simuuh/folder-mover python app.py --hash-password`,
+  then put it into `./config/config.yaml` as `auth.password_hash` (in compose env every `$` would
+  need to be written as `$$`).
+
+<details>
+<summary><b>⚡ Instant moves instead of copying</b></summary>
+
+If downloads and media live on the **same filesystem**, Folder Mover simply renames
+instead of copying — done in milliseconds. Docker treats separate bind mounts as
+separate filesystems, so mount a common parent once and point the paths into it:
+
+```yaml
+    environment:
+      FOLDER_MOVER_DOWNLOAD_DIR: /data/downloads
+      FOLDER_MOVER_MOVIES_DIR:   /data/media/Filme
+      FOLDER_MOVER_SERIES_DIR:   /data/media/Serien
+    volumes:
+      - ./config:/config
+      - /volume1/data:/data
+```
+</details>
+
+### 🐧 Bare metal (systemd)
+
 **Requirements:** Linux with systemd, Python 3.11+, NAS mounted as a local path (SMB/NFS).
 
 ```bash
@@ -138,14 +178,22 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `movies_dir` | `/mnt/Filme` | Movies end up in `movies_dir/<Letter>/<Release>` |
 | `series_dir` | `/mnt/Serien` | Episodes end up in `series_dir/<Series>/Sxx/` |
 | `host` / `port` | `0.0.0.0` / `8080` | Listen address |
-| `secret_key` | random per start | Stable session secret — set it to stay logged in across restarts |
+| `secret_key` | generated | Session secret; if empty, one is created once in `.secret_key` next to the history |
 | `auth.username` | `admin` | Login name |
 | `auth.password_hash` | – | Hash from `app.py --hash-password` (preferred) |
 | `auth.password` | `changeme` | Plaintext fallback if no hash is set |
 | `video_extensions` | `.mkv .mp4 .avi .m4v .ts .m2ts` | What counts as a video |
 | `wrapper_patterns` | `[]` | Extra regexes for container folders that are never a release |
 
-Environment overrides: `FOLDER_MOVER_CONFIG` (path to config file), `FOLDER_MOVER_HISTORY` (path to history file).
+**Environment variables** override `config.yaml`:
+
+| Variable | Overrides |
+|---|---|
+| `FOLDER_MOVER_DOWNLOAD_DIR` / `_MOVIES_DIR` / `_SERIES_DIR` | the three directories |
+| `FOLDER_MOVER_USERNAME` / `_PASSWORD` / `_PASSWORD_HASH` | `auth.*` |
+| `FOLDER_MOVER_SECRET_KEY`, `FOLDER_MOVER_HOST`, `FOLDER_MOVER_PORT` | the matching keys |
+| `FOLDER_MOVER_CONFIG` | path of the config file |
+| `FOLDER_MOVER_HISTORY` | path of `history.jsonl` (the session secret is stored next to it) |
 
 ## 🔒 Security
 
@@ -170,7 +218,6 @@ The UI language is German.
 
 ## 🗺️ Roadmap
 
-- [ ] Docker image & compose example
 - [ ] Jellyfin / Plex library refresh after a move
 - [ ] Notifications (ntfy, Gotify, Telegram) when downloads are waiting or a move finished
 - [ ] Auto-scan / watch mode for the download folder

@@ -1,5 +1,6 @@
 """Mover: executes confirmed move operations with live progress reporting."""
 
+import errno
 import logging
 import os
 import shutil
@@ -170,9 +171,10 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             (source_base / vf).stat().st_size
             for vf in video_files if (source_base / vf).exists()
         )
-        space_error = _check_free_space(dest_dir, item_total)
-        if space_error:
-            return {"source_release": str(source_release), "ok": False, "error": space_error}
+        if not _same_device(source_base, dest_dir):
+            space_error = _check_free_space(dest_dir, item_total)
+            if space_error:
+                return {"source_release": str(source_release), "ok": False, "error": space_error}
 
         item_copied = 0
 
@@ -185,6 +187,13 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                 continue
             if dst_file.exists():
                 errors.append(f"Destination exists: {dst_file.name}")
+                continue
+
+            size = src_file.stat().st_size
+            if _try_rename(src_file, dst_file):
+                item_copied += size
+                on_chunk(src_file.name, item_copied, item_total, size)
+                moved.append(str(dst_file))
                 continue
 
             log.info("Copying series file: %s → %s", src_file, dst_file)
@@ -226,6 +235,14 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                     fdst = dest_dir / fsrc.relative_to(src)
                     files_to_copy.append((fsrc, fdst))
                     item_total += fsrc.stat().st_size
+
+        # Same filesystem (e.g. Docker on the NAS): one atomic rename, no copy
+        if _try_rename(src, dest_dir):
+            on_chunk(src.name, item_total, item_total, item_total)
+            if source_top != source_release and source_top.exists():
+                _remove_if_empty(source_top)
+            return {"source_release": str(source_release), "ok": True, "dest": str(dest_dir),
+                    "size_bytes": item_total, "renamed": True}
 
         space_error = _check_free_space(dest_dir, item_total)
         if space_error:
@@ -397,13 +414,41 @@ def _cleanup_after_series_move(source_top: Path, source_release: Path, config: d
         _remove_if_empty(source_top)
 
 
+def _existing_ancestor(path: Path) -> Path:
+    while not path.exists() and path.parent != path:
+        path = path.parent
+    return path
+
+
+def _same_device(src: Path, dest: Path) -> bool:
+    try:
+        return os.stat(src).st_dev == os.stat(_existing_ancestor(dest)).st_dev
+    except OSError:
+        return False
+
+
+def _try_rename(src: Path, dst: Path) -> bool:
+    """
+    Move instantly via rename() when source and target share a filesystem.
+    Returns False (→ caller copies) for different filesystems — including two
+    separate Docker bind mounts of the same disk, where rename() fails with EXDEV.
+    """
+    if not _same_device(src, dst) or dst.exists():
+        return False
+    try:
+        os.rename(src, dst)
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            log.warning("rename %s → %s failed (%s), falling back to copy", src, dst, e)
+        return False
+    log.info("Renamed (same filesystem): %s → %s", src, dst)
+    return True
+
+
 def _check_free_space(dest_dir: Path, needed: int) -> str | None:
     """Return an error message if the target filesystem cannot hold `needed` bytes."""
-    probe = dest_dir
-    while not probe.exists() and probe.parent != probe:
-        probe = probe.parent
     try:
-        free = shutil.disk_usage(probe).free
+        free = shutil.disk_usage(_existing_ancestor(dest_dir)).free
     except OSError:
         return None  # can't tell (e.g. exotic mount) — let the copy decide
     if needed > free:

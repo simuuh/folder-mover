@@ -32,6 +32,19 @@ DEFAULT_CONFIG = {
 
 DEFAULT_PASSWORD = DEFAULT_CONFIG["auth"]["password"]
 
+# Environment variables override config.yaml (handy for Docker)
+ENV_OVERRIDES = {
+    "FOLDER_MOVER_DOWNLOAD_DIR":  ("download_dir",),
+    "FOLDER_MOVER_MOVIES_DIR":    ("movies_dir",),
+    "FOLDER_MOVER_SERIES_DIR":    ("series_dir",),
+    "FOLDER_MOVER_HOST":          ("host",),
+    "FOLDER_MOVER_PORT":          ("port",),
+    "FOLDER_MOVER_SECRET_KEY":    ("secret_key",),
+    "FOLDER_MOVER_USERNAME":      ("auth", "username"),
+    "FOLDER_MOVER_PASSWORD":      ("auth", "password"),
+    "FOLDER_MOVER_PASSWORD_HASH": ("auth", "password_hash"),
+}
+
 
 def load_config(path: str | None = None) -> dict:
     if path is None:
@@ -52,7 +65,16 @@ def load_config(path: str | None = None) -> dict:
             else:
                 config[key] = val
     else:
-        log.warning("Config file %s not found — using defaults", path)
+        log.info("Config file %s not found — using defaults and environment", path)
+
+    for env, keys in ENV_OVERRIDES.items():
+        val = os.environ.get(env)
+        if not val:
+            continue
+        target = config
+        for key in keys[:-1]:
+            target = target[key]
+        target[keys[-1]] = int(val) if keys[-1] == "port" else val
 
     return config
 
