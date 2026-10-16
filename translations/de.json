@@ -146,6 +146,7 @@
   "login.submit": "Anmelden",
   "login.wrong": "Falscher Benutzername oder Passwort.",
   "login.locked": "Zu viele Fehlversuche. Bitte in ein paar Minuten erneut versuchen.",
+  "login.setup_required": "Anmeldung gesperrt: Es ist noch kein eigenes Passwort gesetzt („{default}“ wird nicht akzeptiert). Hash erzeugen mit „python app.py --hash-password“ und als auth.password_hash in config.yaml bzw. als FOLDER_MOVER_PASSWORD_HASH in .env eintragen, dann neu starten.",
 
   "api.not_authenticated": "Nicht angemeldet",
   "api.no_moves": "Keine Einträge zum Verschieben",

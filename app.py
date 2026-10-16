@@ -58,8 +58,15 @@ app.config.update(
     MAX_CONTENT_LENGTH=2 * 1024 * 1024,
 )
 
-if not config["auth"].get("password_hash") and config["auth"].get("password") == DEFAULT_PASSWORD:
-    log.warning("Default password in use — set auth.password_hash in config.yaml!")
+def password_configured() -> bool:
+    """A hash, or a plaintext password that is neither empty nor the shipped default."""
+    auth = config["auth"]
+    return bool(auth.get("password_hash")) or str(auth.get("password") or "") not in ("", DEFAULT_PASSWORD)
+
+
+if not password_configured():
+    log.error("No password set (or still the default %r) — login is disabled until auth.password_hash "
+              "(python app.py --hash-password) or FOLDER_MOVER_PASSWORD_HASH is set.", DEFAULT_PASSWORD)
 for _problem in check_config(config):
     log.warning("Config: %s", _problem)
 if not os.access(hist.HISTORY_FILE.parent, os.W_OK):
@@ -165,6 +172,9 @@ def _record_login_failure(ip: str):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
+    if not password_configured():
+        # Never accept "changeme" or an empty password — explain how to set one
+        return render_template("login.html", error=_("login.setup_required", default=DEFAULT_PASSWORD)), 403
     if request.method == "POST":
         ip = request.remote_addr or "?"
         if _login_blocked(ip):

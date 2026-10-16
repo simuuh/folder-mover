@@ -32,8 +32,9 @@ auth:
   username: admin
   # Preferred: a hash generated with  python app.py --hash-password
   password_hash: ""
-  # Fallback: plaintext password (only used when password_hash is empty)
-  password: changeme          # change this!
+  # Fallback: plaintext password (only used when password_hash is empty).
+  # Login stays disabled until one of the two is set ("changeme" is refused).
+  password: ""
 
 # ── Video file extensions to recognize ────────────────────────────────────────
 video_extensions:
