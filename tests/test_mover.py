@@ -238,3 +238,71 @@ def test_movie_folder_is_staged_and_renamed_when_complete(config, dirs, monkeypa
     assert set(seen) == {f"{rel}.fmpart"}
     assert sorted(p.name for p in dest.iterdir()) == ["a.mkv", "b.nfo"]
     assert not (dirs["movies_dir"] / "M" / f"{rel}.fmpart").exists()
+
+
+def test_files_appearing_during_copy_are_kept(config, dirs, monkeypatch):
+    # e.g. an extractor still writing into the release folder
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/movie.mkv")
+    src = dirs["download_dir"] / rel
+    real_copy = mover._copy_with_progress
+    calls = []
+
+    def copy_then_new_file(s, d, cb):
+        real_copy(s, d, cb)
+        if not calls:
+            calls.append(1)
+            (src / "late.mkv").write_bytes(b"y" * 10)
+
+    monkeypatch.setattr(mover, "_copy_with_progress", copy_then_new_file)
+    result = mover.execute_moves([{"source_release": str(src), "source_top": str(src),
+                                   "dest_dir": str(dirs["movies_dir"] / "M" / rel), "type": "movie"}], config)[0]
+
+    # the release changed during the copy → nothing moved, nothing lost
+    assert not result["ok"] and result["error_i18n"][0]["key"] == "mover.source_changed"
+    assert (src / "late.mkv").exists() and (src / "movie.mkv").exists()
+    assert not (dirs["movies_dir"] / "M" / rel).exists()
+
+
+def test_files_appearing_after_copy_are_not_deleted(config, dirs, monkeypatch):
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/movie.mkv", f"{rel}/Subs/a.srt")
+    src = dirs["download_dir"] / rel
+    real_snapshot = mover._snapshot
+    calls = []
+
+    def snapshot_then_new_file(path):
+        snap = real_snapshot(path)
+        calls.append(1)
+        if len(calls) == 2:                         # right after the post-copy check
+            (src / "Subs" / "late.srt").write_bytes(b"y")
+        return snap
+
+    monkeypatch.setattr(mover, "_snapshot", snapshot_then_new_file)
+    result = mover.execute_moves([{"source_release": str(src), "source_top": str(src),
+                                   "dest_dir": str(dirs["movies_dir"] / "M" / rel), "type": "movie"}], config)[0]
+
+    assert result["ok"] and result["warnings_i18n"][0]["key"] == "mover.source_leftover"
+    assert sorted(p.name for p in src.rglob("*")) == ["Subs", "late.srt"]   # only the new file is left
+    assert (dirs["movies_dir"] / "M" / rel / "Subs" / "a.srt").exists()
+
+
+def test_growing_episode_is_not_deleted(config, dirs, monkeypatch):
+    rel = "Show.S01E01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/e.mkv")
+    src = dirs["download_dir"] / rel
+    real_copy = mover._copy_with_progress
+
+    def copy_while_growing(s, d, cb):
+        real_copy(s, d, cb)
+        with open(s, "ab") as f:
+            f.write(b"more")
+
+    monkeypatch.setattr(mover, "_copy_with_progress", copy_while_growing)
+    result = mover.execute_moves([{"source_release": str(src), "source_top": str(src),
+                                   "dest_dir": str(dirs["series_dir"] / "Show" / "S01"), "type": "series",
+                                   "video_files": ["e.mkv"]}], config)[0]
+
+    assert not result["ok"] and result["error_i18n"][0]["key"] == "mover.file_changed"
+    assert (src / "e.mkv").stat().st_size == 20
+    assert not (dirs["series_dir"] / "Show" / "S01" / "e.mkv").exists()
