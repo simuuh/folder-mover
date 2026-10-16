@@ -229,8 +229,12 @@ Python-Dateien/Ordner müssen in der `cp`-Zeile von `install.sh` **und** in den
 
 ### Docker
 
-- `Dockerfile` (python:3.12-slim, läuft als 1000:1000, gunicorn) + Beispiel
-  `docker-compose.yml`. Pfade im Container fix: `/downloads`, `/movies`,
+- `Dockerfile` (python:3.12-slim, gunicorn) + Beispiel `docker-compose.yml`.
+  `docker-entrypoint.sh` startet als root, setzt **nur** `/config` (+ Dateien
+  darin) auf `PUID:PGID` und wechselt per `setpriv` auf diesen User. Grund:
+  Docker legt einen fehlenden Bind-Mount-Ordner als root an → vorher
+  „Permission denied“ auf `history.jsonl`/`.secret_key`. Niemals rekursiv über
+  `/downloads`/`/movies`/`/series` chownen. Pfade im Container fix: `/downloads`, `/movies`,
   `/series`, `/config` (gesetzt über `FOLDER_MOVER_*`-Env-Variablen, die laut
   `config.py: ENV_OVERRIDES` Vorrang vor `config.yaml` haben).
 - Session-Secret: ohne `secret_key` erzeugt `app.py: _load_secret_key()` einmalig

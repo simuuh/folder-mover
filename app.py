@@ -60,6 +60,10 @@ if not config["auth"].get("password_hash") and config["auth"].get("password") ==
     log.warning("Default password in use — set auth.password_hash in config.yaml!")
 for _problem in check_config(config):
     log.warning("Config: %s", _problem)
+if not os.access(hist.HISTORY_FILE.parent, os.W_OK):
+    log.error("Data directory %s is not writable (uid %s) — history and session secret cannot be saved. "
+              "Fix the folder owner (Docker: set PUID/PGID).", hist.HISTORY_FILE.parent,
+              os.getuid() if hasattr(os, "getuid") else "?")
 
 # Global move state (single-user tool: only one move at a time)
 _move_results: list = []
