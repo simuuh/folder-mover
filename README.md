@@ -116,7 +116,8 @@ Open `http://<host>:8080`. Inside the container the paths are fixed: `/downloads
 `/movies`, `/series` and `/config` (history, session secret and an optional
 `config.yaml`).
 
-- **`user:`** must be the uid:gid that owns your downloads and media (`id <user>` on the host).
+- **`PUID` / `PGID`** must be the uid/gid that owns your downloads and media (`id <user>` on the host).
+  The container fixes the owner of `/config` itself and then runs as that user.
 - **Hashed password:** `docker run --rm -it ghcr.io/simuuh/folder-mover python app.py --hash-password`,
   then put it into `./config/config.yaml` as `auth.password_hash` (in compose env every `$` would
   need to be written as `$$`).

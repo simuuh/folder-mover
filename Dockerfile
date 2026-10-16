@@ -19,10 +19,13 @@ COPY app.py config.py scanner.py mover.py history.py gunicorn.conf.py ./
 COPY templates templates
 COPY static static
 
-# Runs as 1000:1000 by default; override with `user:` in compose to match the
-# owner of your download/media folders. /config must be writable by that user.
-RUN mkdir -p /config /downloads /movies /series && chown 1000:1000 /config
-USER 1000:1000
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 755 /usr/local/bin/docker-entrypoint.sh \
+ && mkdir -p /config /downloads /movies /series
+
+# The entrypoint fixes /config ownership and then runs the app as PUID:PGID
+# (set them to the owner of your download/media folders).
+ENV PUID=1000 PGID=1000
 
 VOLUME /config
 EXPOSE 8080
@@ -30,4 +33,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4)"
 
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["gunicorn", "-c", "gunicorn.conf.py", "app:app"]
