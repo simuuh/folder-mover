@@ -306,3 +306,63 @@ def test_growing_episode_is_not_deleted(config, dirs, monkeypatch):
     assert not result["ok"] and result["error_i18n"][0]["key"] == "mover.file_changed"
     assert (src / "e.mkv").stat().st_size == 20
     assert not (dirs["series_dir"] / "Show" / "S01" / "e.mkv").exists()
+
+
+def test_episode_folders_with_generic_file_names_do_not_collide(config, dirs):
+    rel = "Show.S01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/Show.S01E01.German/show.mkv", f"{rel}/Show.S01E02.German/show.mkv")
+    dest = dirs["series_dir"] / "Show" / "S01"
+    result = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "series",
+        "video_files": ["Show.S01E01.German/show.mkv", "Show.S01E02.German/show.mkv"],
+    }], config)[0]
+    assert result["ok"] and not result["warnings"]
+    assert sorted(p.name for p in dest.iterdir()) == ["Show.S01E01.German.mkv", "Show.S01E02.German.mkv"]
+
+
+def test_series_copy_error_midway_is_reported_with_moved_files(config, dirs, monkeypatch):
+    import errno
+    rel = "Show.S01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/e01.mkv", f"{rel}/e02.mkv")
+    real_copy = mover._copy_with_progress
+
+    def flaky(src, dst, cb):
+        if src.name == "e02.mkv":
+            raise OSError(errno.ENOSPC, "No space left on device")
+        real_copy(src, dst, cb)
+
+    monkeypatch.setattr(mover, "_copy_with_progress", flaky)
+    dest = dirs["series_dir"] / "Show" / "S01"
+    result = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "series", "video_files": ["e01.mkv", "e02.mkv"],
+    }], config)[0]
+
+    assert not result["ok"]
+    assert result["error_i18n"][0] == {"key": "mover.copy_failed",
+                                       "args": {"name": "e02.mkv", "error": "No space left on device"}}
+    assert result["moved_files"] == [str(dest / "e01.mkv")]
+    assert (dirs["download_dir"] / rel / "e02.mkv").exists()
+
+
+def test_series_space_check_also_on_same_device(config, dirs, monkeypatch):
+    # Same st_dev, but rename() fails (two bind mounts of one disk): free space is still checked
+    rel = "Show.S01E01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/e.mkv", size=1000)
+    monkeypatch.setattr(mover.shutil, "disk_usage", lambda p: namedtuple("U", "total used free")(1, 1, 10))
+    result = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dirs["series_dir"] / "Show" / "S01"), "type": "series", "video_files": ["e.mkv"],
+    }], config)[0]
+    assert mover._same_device(dirs["download_dir"], dirs["series_dir"])
+    assert not result["ok"] and result["error_i18n"][0]["key"] == "mover.no_space"
+    assert (dirs["download_dir"] / rel / "e.mkv").exists()
+
+
+def test_unexpected_error_is_translatable(config, dirs, monkeypatch):
+    make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/a.mkv")
+    monkeypatch.setattr(mover, "_do_move", lambda *a: 1 / 0)
+    result = mover.execute_moves([{"source_release": str(dirs["download_dir"] / "Movie.2022.German.1080p.WEB-GRP"),
+                                   "type": "movie"}], config)[0]
+    assert result["error_i18n"][0]["key"] == "mover.unexpected"

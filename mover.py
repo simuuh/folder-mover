@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from config import PARTIAL_SUFFIX, video_extensions
+from scanner import RE_SEASON_EP, RE_SxE
 
 log = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ def execute_moves(
 
         except Exception as e:
             log.exception("Move failed for %s", move.get("source_release"))
-            result = {"source_release": move.get("source_release"), "ok": False, "error": str(e)}
+            result = _fail(move.get("source_release"), _err("mover.unexpected", str(e), error=str(e)))
             results.append(result)
             with _progress_lock:
                 _progress["errors"].append(_progress_error(result))
@@ -201,16 +202,13 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             (source_base / vf).stat().st_size
             for vf in video_files if (source_base / vf).exists()
         )
-        if not _same_device(source_base, dest_dir):
-            space_error = _check_free_space(dest_dir, item_total)
-            if space_error:
-                return _fail(source_release, space_error)
-
         item_copied = 0
+        space_checked = False
+        failed = False
 
         for rel_path in video_files:
             src_file = source_base / rel_path if not is_loose else source_release
-            dst_file = dest_dir / Path(rel_path).name
+            dst_file = dest_dir / _episode_file_name(rel_path)
 
             if not src_file.exists():
                 errors.append(_err("mover.file_not_found", f"File not found: {rel_path}", name=rel_path))
@@ -227,6 +225,16 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                 moved.append(str(dst_file))
                 continue
 
+            # Checked before the first real copy — also when source and target
+            # share a device but rename() still fails (two Docker bind mounts)
+            if not space_checked:
+                space_checked = True
+                space_error = _check_free_space(dest_dir, item_total - item_copied)
+                if space_error:
+                    errors.append(space_error)
+                    failed = True
+                    break
+
             log.info("Copying series file: %s → %s", src_file, dst_file)
             offset = item_copied
             before = _stat_key(src_file)
@@ -234,7 +242,15 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             def _cb(fname, ic, it, chunk, _off=offset):
                 on_chunk(fname, _off + ic, item_total, chunk)
 
-            _copy_with_progress(src_file, dst_file, _cb)
+            try:
+                _copy_with_progress(src_file, dst_file, _cb)
+            except OSError as e:
+                # Episodes moved so far stay moved; report which one failed and stop
+                log.warning("Copy failed: %s → %s: %s", src_file, dst_file, e)
+                errors.append(_err("mover.copy_failed", f"Copy failed: {rel_path} ({e})",
+                                   name=rel_path, error=e.strerror or str(e)))
+                failed = True
+                break
             if _stat_key(src_file) != before:
                 # Still being written: the copy may be truncated → keep the source
                 dst_file.unlink(missing_ok=True)
@@ -247,8 +263,9 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
         _cleanup_after_series_move(source_top, source_release, config)
 
-        if errors and not moved:
-            return _fail(source_release, *errors)
+        if failed or (errors and not moved):
+            # Partial moves list what already made it to the NAS
+            return {**_fail(source_release, *errors), "moved_files": moved, "size_bytes": item_copied}
         return {"source_release": str(source_release), "ok": True, "size_bytes": item_copied,
                 "moved_files": moved, **_warnings(errors)}
 
@@ -480,6 +497,22 @@ def _cleanup_after_series_move(source_top: Path, source_release: Path, config: d
         shutil.rmtree(str(source_release), ignore_errors=True)
     if source_top != source_release and source_top.exists():
         _remove_if_empty(source_top)
+
+
+def _episode_file_name(rel_path: str) -> str:
+    """
+    Target file name of an episode. Releases with one folder per episode
+    sometimes use the same generic file name everywhere ("Show.S01E01/show.mkv")
+    — then the folder name carries the episode and becomes the file name.
+    """
+    rel = Path(rel_path)
+    if _has_episode(rel.stem) or not _has_episode(rel.parent.name):
+        return rel.name
+    return rel.parent.name + rel.suffix
+
+
+def _has_episode(name: str) -> bool:
+    return bool(RE_SEASON_EP.search(name) or RE_SxE.search(name))
 
 
 def _stat_key(path: Path) -> tuple[int, int]:

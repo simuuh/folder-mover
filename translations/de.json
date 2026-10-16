@@ -166,5 +166,7 @@
   "mover.no_space": "Nicht genug Speicherplatz am Ziel: {need} GB benötigt, {free} GB frei",
   "mover.source_changed": "Download wird noch geschrieben (Dateien haben sich während des Kopierens geändert) – nichts verschoben",
   "mover.file_changed": "Datei hat sich während des Kopierens geändert, nicht verschoben: {name}",
-  "mover.source_leftover": "Während des Verschiebens neu entstandene Dateien sind im Download-Ordner geblieben: {path}"
+  "mover.source_leftover": "Während des Verschiebens neu entstandene Dateien sind im Download-Ordner geblieben: {path}",
+  "mover.copy_failed": "Kopieren fehlgeschlagen: {name} ({error})",
+  "mover.unexpected": "Unerwarteter Fehler: {error}"
 }
