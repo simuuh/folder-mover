@@ -26,6 +26,20 @@ RE_UUID = re.compile(
 # Articles to preserve in display names but ignore when matching
 ARTICLES = re.compile(r"^(the|der|die|das|ein|eine|les|le|la|los|las)\s+", re.IGNORECASE)
 
+# NAS/OS housekeeping entries that are never media (Synology @eaDir, #recycle, …)
+IGNORED_NAMES = {"#recycle", "#snapshot", "lost+found", "$recycle.bin", "system volume information"}
+
+
+def is_ignored(name: str) -> bool:
+    return name.startswith((".", "@")) or name.lower() in IGNORED_NAMES
+
+
+def _walk(path: Path):
+    """os.walk that skips ignored housekeeping folders."""
+    for root, dirs, files in os.walk(path):
+        dirs[:] = [d for d in dirs if not is_ignored(d)]
+        yield root, dirs, files
+
 
 # ── NAS series library cache ───────────────────────────────────────────────────
 
@@ -39,6 +53,7 @@ class SeriesLibrary:
         self.series_dir = Path(series_dir)
         # { normalized_key: actual_folder_name }
         self._index: dict[str, str] = {}
+        self._match_cache: dict[str, tuple[str | None, float]] = {}
         self._load()
 
     def _load(self):
@@ -46,7 +61,7 @@ class SeriesLibrary:
         if not self.series_dir.exists():
             return
         for entry in self.series_dir.iterdir():
-            if entry.is_dir():
+            if entry.is_dir() and not is_ignored(entry.name):
                 self._index[_fuzzy_key(entry.name)] = entry.name
         log.info("SeriesLibrary: %d existing series indexed", len(self._index))
 
@@ -61,6 +76,9 @@ class SeriesLibrary:
         key = _fuzzy_key(candidate)
         if not key:
             return None, 0.0
+        # Episodes of the same series share a key → compare against the library once
+        if key in self._match_cache:
+            return self._match_cache[key]
 
         best_name = None
         best_score = 0.0
@@ -71,6 +89,7 @@ class SeriesLibrary:
                 best_score = score
                 best_name = actual
 
+        self._match_cache[key] = (best_name, best_score)
         return best_name, best_score
 
     def seasons_for(self, series_folder: str) -> list[str]:
@@ -198,7 +217,7 @@ def is_name_wrapper(parent_name: str, child_name: str) -> bool:
 
 
 def _contains_video(path: Path, exts: set[str]) -> bool:
-    for _, _, files in os.walk(path):
+    for _, _, files in _walk(path):
         if any(Path(f).suffix.lower() in exts for f in files):
             return True
     return False
@@ -224,7 +243,7 @@ def find_releases(
         return [path]
 
     try:
-        children = sorted(path.iterdir())
+        children = sorted(c for c in path.iterdir() if not is_ignored(c.name))
     except OSError:
         return [path]
 
@@ -355,11 +374,13 @@ def suggest_destination(
     classification: dict,
     config: dict,
     library: "SeriesLibrary | None" = None,
+    movie_index: "MovieIndex | None" = None,
 ) -> dict:
     rtype = classification["type"]
+    base_name = release_folder.stem if release_folder.is_file() else release_folder.name
 
     if rtype == "series":
-        raw_name  = classification["series_name"] or release_folder.name
+        raw_name  = classification["series_name"] or base_name
         season    = classification["season"] or 1
         season_str = f"S{season:02d}"
 
@@ -371,6 +392,8 @@ def suggest_destination(
 
         if library:
             matched_name, match_score = library.match(raw_name)
+            if match_score < MATCH_HINT:
+                matched_name = None          # too weak to even suggest
             match_auto = match_score >= MATCH_AUTO
             if matched_name:
                 existing_seasons = library.seasons_for(matched_name)
@@ -410,10 +433,10 @@ def suggest_destination(
         title       = classification.get("title") or folder_name
         year        = classification.get("year")
 
-        # Check for existing release of same title+year in the letter folder
-        duplicate_path = _find_movie_duplicate(
-            config["movies_dir"], first_char, title, year, folder_name
-        )
+        # Check for an existing release of the same title+year anywhere in movies_dir
+        if movie_index is None:
+            movie_index = MovieIndex(config["movies_dir"])
+        duplicate_path = movie_index.find_duplicate(folder_name, year)
 
         return {
             "type": "movie",
@@ -452,45 +475,52 @@ def _title_key(name: str) -> str:
     return s
 
 
-def _find_movie_duplicate(
-    movies_dir: str, first_char: str, title: str, year: int | None, new_folder: str
-) -> str | None:
+class MovieIndex:
     """
-    Look for an existing folder anywhere in movies_dir that matches
-    the same title+year but is a different release (different group).
-    Searches all letter subfolders to catch cases where old releases
-    were filed under a different letter (e.g. The → T vs M).
-    Returns the full path of the duplicate, or None.
+    Lists movies_dir/<Letter>/<Release> once per scan (lazily, on the first
+    movie) instead of walking the whole NAS movie tree for every movie found.
     """
-    movies_path = Path(movies_dir)
-    if not movies_path.exists():
+
+    def __init__(self, movies_dir: str):
+        self.movies_dir = Path(movies_dir)
+        self._entries: list[tuple[str, str, str]] | None = None  # (name, path, title_key)
+
+    def _load(self) -> list[tuple[str, str, str]]:
+        entries = []
+        if not self.movies_dir.exists():
+            return entries
+        try:
+            for letter_dir in sorted(self.movies_dir.iterdir()):
+                # only single-letter (and #) index folders
+                if not letter_dir.is_dir() or len(letter_dir.name) > 2 or is_ignored(letter_dir.name):
+                    continue
+                for entry in letter_dir.iterdir():
+                    if entry.is_dir() and not is_ignored(entry.name):
+                        entries.append((entry.name, str(entry), _title_key(entry.name)))
+        except OSError as e:
+            log.warning("Could not index %s: %s", self.movies_dir, e)
+        log.info("MovieIndex: %d existing movies indexed", len(entries))
+        return entries
+
+    def find_duplicate(self, new_folder: str, year: int | None) -> str | None:
+        """
+        Existing folder with the same title+year but a different release name
+        (e.g. another group). Searches all letter folders to catch releases that
+        were filed under a different letter (The → T vs M).
+        """
+        new_key = _title_key(new_folder)
+        if not new_key:
+            return None
+        if self._entries is None:
+            self._entries = self._load()
+        for name, path, existing_key in self._entries:
+            if name == new_folder or not existing_key:
+                continue  # exact same name → handled by dest_exists
+            if year and str(year) not in name:
+                continue
+            if _token_similarity(new_key, existing_key) >= 0.85:
+                return path
         return None
-
-    new_key = _title_key(new_folder)
-
-    try:
-        # Iterate all single-letter (and #) subdirectories
-        for letter_dir in sorted(movies_path.iterdir()):
-            if not letter_dir.is_dir():
-                continue
-            if len(letter_dir.name) > 2:  # skip non-letter-index folders
-                continue
-            for entry in letter_dir.iterdir():
-                if not entry.is_dir():
-                    continue
-                if entry.name == new_folder:
-                    continue  # exact same name → handled by dest_exists
-                existing_key = _title_key(entry.name)
-                if not existing_key or not new_key:
-                    continue
-                if year and str(year) not in entry.name:
-                    continue
-                score = _token_similarity(new_key, existing_key)
-                if score >= 0.85:
-                    return str(entry)
-    except PermissionError:
-        pass
-    return None
 
 
 def _find_videos(folder: Path, config: dict) -> list[Path]:
@@ -498,7 +528,7 @@ def _find_videos(folder: Path, config: dict) -> list[Path]:
         return [folder]
     exts = video_extensions(config)
     videos = []
-    for root, _, files in os.walk(folder):
+    for root, _, files in _walk(folder):
         for f in files:
             if Path(f).suffix.lower() in exts:
                 videos.append(Path(root) / f)
@@ -518,10 +548,11 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
 
     emit("init", "Lese Download-Verzeichnis…")
 
-    all_entries = sorted(dl_dir.iterdir())
+    all_entries = sorted(e for e in dl_dir.iterdir() if not is_ignored(e.name))
 
     emit("library", "Lade Serien-Bibliothek vom NAS…")
     library = SeriesLibrary(config["series_dir"])
+    movie_index = MovieIndex(config["movies_dir"])
     emit("library", f"{len(library.all_names())} Serien indexiert")
 
     exts = video_extensions(config)
@@ -539,7 +570,7 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
                 if release_key in seen_releases:
                     continue
                 seen_releases.add(release_key)
-                items.append(_process_release(entry, release, config, library,
+                items.append(_process_release(entry, release, config, library, movie_index,
                                               shared_wrapper=len(releases) > 1))
         except Exception as e:
             log.warning("Error processing %s: %s", entry, e)
@@ -551,11 +582,11 @@ def scan_downloads(config: dict, on_progress=None) -> list[dict]:
 
 def _process_release(
     top_entry: Path, release: Path, config: dict, library: SeriesLibrary,
-    shared_wrapper: bool = False,
+    movie_index: MovieIndex | None = None, shared_wrapper: bool = False,
 ) -> dict:
     is_file = release.is_file()
     classification = classify(release.stem if is_file else release.name)
-    suggestion     = suggest_destination(release, classification, config, library)
+    suggestion     = suggest_destination(release, classification, config, library, movie_index)
 
     if is_file and suggestion["type"] != "series":
         # Loose movie file: goes directly into the letter folder
@@ -603,7 +634,7 @@ def _dir_stats(path: Path, config: dict | None = None) -> tuple[int, bool]:
     total = 0
     found_any = False
     incomplete = False
-    for root, _, files in os.walk(path):
+    for root, _, files in _walk(path):
         for f in files:
             suffix = Path(f).suffix.lower()
             if suffix in PARTIAL_SUFFIXES:
