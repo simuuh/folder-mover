@@ -190,6 +190,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `auth.password` | `changeme` | Plaintext fallback if no hash is set |
 | `video_extensions` | `.mkv .mp4 .avi .m4v .ts .m2ts` | What counts as a video |
 | `wrapper_patterns` | `[]` | Extra regexes for container folders that are never a release |
+| `mount_marker` | – | File/folder that must exist in `movies_dir` **and** `series_dir` before anything is moved (e.g. `.folder-mover`) — protects against filling the empty mountpoint of an unmounted share |
 
 **Environment variables** override `config.yaml`:
 
@@ -198,6 +199,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `FOLDER_MOVER_DOWNLOAD_DIR` / `_MOVIES_DIR` / `_SERIES_DIR` | the three directories |
 | `FOLDER_MOVER_USERNAME` / `_PASSWORD` / `_PASSWORD_HASH` | `auth.*` |
 | `FOLDER_MOVER_SECRET_KEY`, `FOLDER_MOVER_HOST`, `FOLDER_MOVER_PORT` | the matching keys |
+| `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER` | the matching keys |
 | `FOLDER_MOVER_CONFIG` | path of the config file |
 | `FOLDER_MOVER_HISTORY` | path of `history.jsonl` (the session secret is stored next to it) |
 

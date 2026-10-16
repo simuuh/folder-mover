@@ -24,6 +24,9 @@
   "scan.library_indexed": "{count} Serien indexiert",
   "scan.library_indexed_one": "{count} Serie indexiert",
   "scan.download_dir_missing": "Download-Verzeichnis nicht gefunden: {path}",
+  "scan.marker_missing": "Markierungsdatei {marker} fehlt in {path} – ist das NAS gemountet? Verschieben ist gesperrt.",
+  "scan.library_missing": "Medienordner fehlt: {path} – ist das NAS gemountet?",
+  "scan.library_empty": "Medienordner ist leer: {path} – ist das NAS gemountet?",
 
   "toolbar.select_all": "Alle wählen",
   "toolbar.select_none": "Keine",
@@ -160,6 +163,7 @@
   "api.path_not_found": "Pfad nicht gefunden",
   "api.invalid_replace": "Ungültiges zu ersetzendes Release",
   "api.dirs_overlap": "Konfiguration unsicher: {a} und {b} überschneiden sich. Scan, Verschieben und Löschen sind gesperrt, bis die Pfade getrennt sind.",
+  "api.marker_missing": "Markierungsdatei {marker} fehlt in {path} – NAS nicht gemountet? Nichts verschoben.",
 
   "mover.source_missing": "Quelle existiert nicht mehr",
   "mover.file_not_found": "Datei nicht gefunden: {name}",
@@ -171,5 +175,6 @@
   "mover.source_leftover": "Während des Verschiebens neu entstandene Dateien sind im Download-Ordner geblieben: {path}",
   "mover.copy_failed": "Kopieren fehlgeschlagen: {name} ({error})",
   "mover.unexpected": "Unerwarteter Fehler: {error}",
-  "mover.replace_failed": "Altes Release konnte nicht gelöscht werden: {path} ({error})"
+  "mover.replace_failed": "Altes Release konnte nicht gelöscht werden: {path} ({error})",
+  "mover.marker_missing": "Markierungsdatei {marker} fehlt in {path} – NAS nicht gemountet? Nichts verschoben."
 }

@@ -18,7 +18,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import history as hist
 import i18n
-from config import DEFAULT_PASSWORD, check_config, dir_overlaps, load_config
+from config import DEFAULT_PASSWORD, check_config, dir_overlaps, library_warnings, load_config, missing_mount_markers
 from mover import execute_moves, get_progress, mark_failed, mark_pending
 from scanner import scan_downloads
 
@@ -308,7 +308,8 @@ def api_scan():
             results = scan_downloads(config, on_progress=on_progress)
             with _scan_lock:
                 _scan_results.extend(results)
-                _scan_progress.update({"phase": "done", "found": len(results), "done": True})
+                _scan_progress.update({"phase": "done", "found": len(results), "done": True,
+                                       "warnings_i18n": library_warnings(config)})
         except FileNotFoundError as e:
             log.error("Scan failed: %s", e)
             with _scan_lock:
@@ -339,7 +340,8 @@ def api_scan_progress():
                 with _scan_lock:
                     results = list(_scan_results)
                 final = {"done": True, "items": results, "error": state.get("error"),
-                         "error_i18n": state.get("error_i18n"), "known_series": known_series}
+                         "error_i18n": state.get("error_i18n"), "known_series": known_series,
+                         "warnings_i18n": state.get("warnings_i18n")}
                 yield f"data: {json.dumps(final)}\n\n"
                 return
             time.sleep(0.15)
@@ -366,6 +368,11 @@ def api_move():
         if err:
             log.warning("Refused move %r: %s", move, err)
             return api_error(err, 403)
+
+    unmounted = missing_mount_markers(config)
+    if unmounted:
+        log.error("Refused move: mount marker %r missing in %s", config["mount_marker"], unmounted)
+        return api_error("api.marker_missing", 409, path=unmounted[0], marker=config["mount_marker"])
 
     with _move_lock:
         if _move_running:

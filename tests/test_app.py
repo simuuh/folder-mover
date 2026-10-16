@@ -281,3 +281,37 @@ def test_overlap_detection(config, tmp_path):
                                                                         ("download_dir", "series_dir")]
     # a common prefix is no overlap
     assert dir_overlaps({**config, "series_dir": config["movies_dir"] + "2"}) == []
+
+
+def test_mount_marker_blocks_moves_into_unmounted_share(auth_client, dirs):
+    # NAS not mounted → movies_dir is just the empty local mountpoint
+    app_module.config["mount_marker"] = ".folder-mover"
+    make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/movie.mkv")
+    resp = auth_client.post("/api/move", json={"moves": [_move(dirs)]})
+    assert resp.status_code == 409 and resp.get_json()["error_key"] == "api.marker_missing"
+    assert (dirs["download_dir"] / "Movie.2022.German.1080p.WEB-GRP" / "movie.mkv").exists()
+
+    for d in ("movies_dir", "series_dir"):
+        (dirs[d] / ".folder-mover").touch()
+    assert auth_client.post("/api/move", json={"moves": [_move(dirs)]}).get_json()["ok"]
+
+
+def test_mover_rechecks_marker_per_item(config, dirs):
+    import mover
+    make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/movie.mkv")
+    result = mover.execute_moves([_move(dirs)], {**config, "mount_marker": ".folder-mover"})[0]
+    assert not result["ok"] and result["error_i18n"][0]["key"] == "mover.marker_missing"
+    assert not (dirs["movies_dir"] / "M").exists()
+
+
+def test_scan_warns_about_empty_or_unmarked_library(auth_client, dirs):
+    make_files(dirs["series_dir"], "Some Show/S01/e.mkv")             # movies_dir stays empty
+    auth_client.post("/api/scan")
+    body = auth_client.get("/api/scan-progress").get_data(as_text=True)
+    final = json.loads([line for line in body.splitlines() if line.startswith("data:")][-1][5:])
+    assert final["warnings_i18n"] == [{"key": "scan.library_empty", "args": {"path": str(dirs["movies_dir"])}}]
+
+    app_module.config["mount_marker"] = ".folder-mover"
+    (dirs["series_dir"] / ".folder-mover").touch()
+    from config import library_warnings
+    assert [w["key"] for w in library_warnings(app_module.config)] == ["scan.marker_missing"]
