@@ -23,7 +23,7 @@ def client(config, tmp_path, monkeypatch):
 @pytest.fixture
 def auth_client(client):
     with client.session_transaction() as sess:
-        sess["logged_in"] = True
+        app_module.start_session(sess)
     return client
 
 
@@ -331,3 +331,59 @@ def test_hash_allows_login_even_if_plaintext_is_default(client):
     app_module.config["auth"] = {"username": "admin", "password": "changeme",
                                  "password_hash": generate_password_hash("hashed!")}
     assert client.post("/login", data={"username": "admin", "password": "hashed!"}).status_code == 302
+
+
+def _login(client):
+    assert client.post("/login", data={"username": "admin", "password": "s3cret"}).status_code == 302
+    return client.get_cookie("session").value
+
+
+def test_session_cookie_is_invalid_after_logout(client):
+    cookie = _login(client)
+    client.post("/logout")
+    client.set_cookie("session", cookie)            # replay a copied cookie
+    assert client.get("/api/status").status_code == 401
+
+
+def test_session_ends_on_password_change(client):
+    _login(client)
+    assert client.get("/api/status").status_code == 200
+    app_module.config["auth"]["password"] = "a-new-password"
+    assert client.get("/api/status").status_code == 401
+
+
+def test_session_expires(client, monkeypatch):
+    _login(client)
+    monkeypatch.setitem(app_module.config, "session_days", 1)
+    real_time = time.time
+    monkeypatch.setattr(app_module.time, "time", lambda: real_time() + 2 * 86400)
+    assert client.get("/api/status").status_code == 401
+
+
+def test_old_style_session_is_rejected(client):
+    with client.session_transaction() as sess:
+        sess["logged_in"] = True                    # cookie of an older version
+    assert client.get("/api/status").status_code == 401
+
+
+def test_successful_login_resets_failures(client):
+    for _ in range(app_module.LOGIN_MAX_FAILURES - 1):
+        client.post("/login", data={"username": "admin", "password": "nope"})
+    _login(client)
+    client.post("/logout")
+    for _ in range(app_module.LOGIN_MAX_FAILURES - 1):
+        client.post("/login", data={"username": "admin", "password": "nope"})
+    assert client.post("/login", data={"username": "admin", "password": "s3cret"}).status_code == 302
+
+
+def test_empty_secret_key_file_is_replaced(tmp_path, monkeypatch):
+    monkeypatch.setattr(history, "HISTORY_FILE", tmp_path / "history.jsonl")
+    (tmp_path / ".secret_key").write_text("")
+    key = app_module._load_secret_key({})
+    assert len(key) == 64 and (tmp_path / ".secret_key").read_text(encoding="utf-8") == key
+
+
+def test_proxy_count_is_read_as_int(tmp_path, monkeypatch):
+    from config import load_config
+    monkeypatch.setenv("FOLDER_MOVER_PROXY_COUNT", "1")
+    assert load_config(str(tmp_path / "missing.yaml"))["proxy_count"] == 1
