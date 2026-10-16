@@ -24,3 +24,6 @@ htmlcov/
 # Editors
 .vscode/
 .idea/
+
+# Generated session secret
+.secret_key

@@ -1,0 +1,23 @@
+# Folder Mover — example compose file
+# Adjust the host paths on the left side of each volume and the user id.
+
+services:
+  folder-mover:
+    image: ghcr.io/simuuh/folder-mover:latest
+    # build: .                      # or build the image locally
+    container_name: folder-mover
+    restart: unless-stopped
+    # uid:gid that owns your downloads and media folders (`id <user>` on the host;
+    # often 1026:100 on Synology, 99:100 on Unraid)
+    user: "1000:1000"
+    ports:
+      - "8080:8080"
+    environment:
+      FOLDER_MOVER_USERNAME: admin
+      FOLDER_MOVER_PASSWORD: changeme   # change this! (or set password_hash in ./config/config.yaml)
+      TZ: Europe/Zurich
+    volumes:
+      - ./config:/config                # config.yaml (optional), history, session secret
+      - /path/to/downloads:/downloads
+      - /path/to/media/Filme:/movies
+      - /path/to/media/Serien:/series

@@ -6,6 +6,66 @@ from conftest import UUID_A, make_files
 import mover
 
 
+@pytest.fixture(autouse=True)
+def force_copy(request, monkeypatch):
+    """tmp_path is one filesystem → would always rename. Test the copy path unless marked."""
+    if not request.node.get_closest_marker("rename"):
+        monkeypatch.setattr(mover, "_try_rename", lambda src, dst: False)
+
+
+@pytest.mark.rename
+def test_same_filesystem_movie_is_renamed(config, dirs, monkeypatch):
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{UUID_A}/{rel}/movie.mkv")
+    monkeypatch.setattr(mover, "_copy_with_progress", lambda *a: pytest.fail("must not copy"))
+    dest = dirs["movies_dir"] / "M" / rel
+
+    results = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / UUID_A / rel),
+        "source_top": str(dirs["download_dir"] / UUID_A), "dest_dir": str(dest), "type": "movie",
+    }], config)
+
+    assert results[0]["ok"] and results[0]["renamed"]
+    assert (dest / "movie.mkv").exists()
+    assert not (dirs["download_dir"] / UUID_A).exists()
+
+
+@pytest.mark.rename
+def test_same_filesystem_episode_is_renamed(config, dirs, monkeypatch):
+    fname = "Show.S01E01.German.1080p.WEB-GRP.mkv"
+    make_files(dirs["download_dir"], fname)
+    monkeypatch.setattr(mover, "_copy_with_progress", lambda *a: pytest.fail("must not copy"))
+    dest = dirs["series_dir"] / "Show" / "S01"
+
+    results = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / fname), "source_top": str(dirs["download_dir"] / fname),
+        "dest_dir": str(dest), "type": "series", "video_files": [fname], "is_loose_file": True,
+    }], config)
+
+    assert results[0]["ok"] and (dest / fname).exists()
+
+
+@pytest.mark.rename
+def test_cross_device_rename_falls_back_to_copy(config, dirs, monkeypatch):
+    import errno
+
+    def exdev(src, dst):
+        raise OSError(errno.EXDEV, "Invalid cross-device link")
+
+    monkeypatch.setattr(mover.os, "rename", exdev)
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/movie.mkv")
+    dest = dirs["movies_dir"] / "M" / rel
+
+    results = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "movie",
+    }], config)
+
+    assert results[0]["ok"] and "renamed" not in results[0]
+    assert (dest / "movie.mkv").exists() and not (dirs["download_dir"] / rel).exists()
+
+
 def test_move_movie_folder(config, dirs):
     rel = "Movie.2022.German.1080p.WEB-GRP"
     make_files(dirs["download_dir"], f"{UUID_A}/{rel}/movie.mkv", f"{UUID_A}/{rel}/info.nfo")

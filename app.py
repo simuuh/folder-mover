@@ -26,9 +26,30 @@ __version__ = "1.1.0"
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
+def _load_secret_key(cfg: dict) -> str:
+    """
+    Configured secret_key, else one persisted next to the history file (so
+    sessions survive restarts), else a random one for this process only.
+    """
+    if cfg.get("secret_key"):
+        return cfg["secret_key"]
+    path = hist.HISTORY_FILE.parent / ".secret_key"
+    try:
+        if path.exists():
+            return path.read_text(encoding="utf-8").strip()
+        key = secrets.token_hex(32)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(key)
+        return key
+    except OSError as e:
+        log.warning("Could not persist secret key (%s) — sessions end on restart", e)
+        return secrets.token_hex(32)
+
+
 app = Flask(__name__)
 config = load_config()
-app.secret_key = config.get("secret_key") or secrets.token_hex(32)
+app.secret_key = _load_secret_key(config)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",

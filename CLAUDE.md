@@ -191,7 +191,23 @@ Im Produktivbetrieb via systemd: `journalctl -u folder-mover -f`.
 `folder-mover.service` (systemd, gunicorn via `gunicorn.conf.py`) und startet den
 Service. **Es muss genau EIN gunicorn-Worker laufen** — Scan-/Move-Zustand liegt im
 Prozessspeicher; mehrere Worker würden sich gegenseitig nicht sehen. Neue
-Python-Dateien/Ordner müssen in der `cp`-Zeile von `install.sh` ergänzt werden. Bei Code-Änderungen am
+Python-Dateien/Ordner müssen in der `cp`-Zeile von `install.sh` **und** in den
+`COPY`-Zeilen des `Dockerfile` ergänzt werden.
+
+### Docker
+
+- `Dockerfile` (python:3.12-slim, läuft als 1000:1000, gunicorn) + Beispiel
+  `docker-compose.yml`. Pfade im Container fix: `/downloads`, `/movies`,
+  `/series`, `/config` (gesetzt über `FOLDER_MOVER_*`-Env-Variablen, die laut
+  `config.py: ENV_OVERRIDES` Vorrang vor `config.yaml` haben).
+- Session-Secret: ohne `secret_key` erzeugt `app.py: _load_secret_key()` einmalig
+  `.secret_key` neben `history.jsonl` (im Container also in `/config`).
+- `mover.py: _try_rename()` verschiebt per `rename()`, wenn Quelle und Ziel auf
+  demselben Dateisystem liegen; bei `EXDEV` (z. B. zwei getrennte Bind-Mounts)
+  wird normal kopiert. In Tests ist der Rename-Pfad per autouse-Fixture
+  abgeschaltet, außer bei `@pytest.mark.rename`.
+- Lokal testen: `docker build -t folder-mover:test .` und mit gemounteten
+  Testordnern starten. Bei Code-Änderungen am
 Produktivsystem: Dateien erneut nach `/opt/folder-mover` kopieren und
 `sudo systemctl restart folder-mover` ausführen — das Skript überschreibt
 keine bestehende `config.yaml`.
