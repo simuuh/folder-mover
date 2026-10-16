@@ -405,6 +405,11 @@ def api_scan_progress():
         while True:
             with _scan_lock:
                 state = dict(_scan_progress)
+            if not state:
+                # No scan has run since the start — end the stream instead of
+                # polling an empty state forever (and holding a worker thread)
+                yield f"data: {json.dumps({'done': True, 'items': [], 'error': None})}\n\n"
+                return
             known_series = state.pop("known_series", [])
             yield f"data: {json.dumps(state)}\n\n"
             if state.get("done"):
@@ -497,6 +502,18 @@ def api_progress():
     )
 
 
+def require_no_move(f):
+    """Deleting while a move runs could remove its source or its destination."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        with _move_lock:
+            moving = _move_running
+        if moving:
+            return api_error("api.move_running", 409)
+        return f(*args, **kwargs)
+    return decorated
+
+
 def _delete_path(target: str):
     if os.path.isdir(target) and not os.path.islink(target):
         shutil.rmtree(target)
@@ -507,6 +524,7 @@ def _delete_path(target: str):
 @app.route("/api/delete-nas", methods=["POST"])
 @require_auth
 @require_sane_dirs
+@require_no_move
 def api_delete_nas():
     data = request.get_json(silent=True) or {}
     path = data.get("path", "")
@@ -533,6 +551,7 @@ def api_delete_nas():
 @app.route("/api/delete", methods=["POST"])
 @require_auth
 @require_sane_dirs
+@require_no_move
 def api_delete():
     data = request.get_json(silent=True) or {}
     path = data.get("path") or data.get("source_top", "")
