@@ -19,6 +19,11 @@ DEFAULT_CONFIG = {
     # Stable secret for session cookies. If empty, a random key is generated on
     # every start (everyone gets logged out on restart).
     "secret_key": "",
+    # Sessions end after this many days (and on logout / password change).
+    "session_days": 30,
+    # Number of reverse proxies in front of the app (0 = none). Needed so the
+    # login lockout sees the real client IP instead of the proxy's.
+    "proxy_count": 0,
     "auth": {
         "username": "admin",
         # Either set a plaintext `password` or (preferred) a `password_hash`
@@ -52,10 +57,15 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_LANGUAGE":      ("language",),
     "FOLDER_MOVER_MOUNT_MARKER":  ("mount_marker",),
     "FOLDER_MOVER_SECRET_KEY":    ("secret_key",),
+    "FOLDER_MOVER_SESSION_DAYS":  ("session_days",),
+    "FOLDER_MOVER_PROXY_COUNT":   ("proxy_count",),
     "FOLDER_MOVER_USERNAME":      ("auth", "username"),
     "FOLDER_MOVER_PASSWORD":      ("auth", "password"),
     "FOLDER_MOVER_PASSWORD_HASH": ("auth", "password_hash"),
 }
+
+
+INT_KEYS = {"port", "session_days", "proxy_count"}
 
 
 def load_config(path: str | None = None) -> dict:
@@ -86,7 +96,7 @@ def load_config(path: str | None = None) -> dict:
         target = config
         for key in keys[:-1]:
             target = target[key]
-        target[keys[-1]] = int(val) if keys[-1] == "port" else val
+        target[keys[-1]] = int(val) if keys[-1] in INT_KEYS else val
 
     return config
 

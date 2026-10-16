@@ -185,6 +185,8 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `series_dir` | `/mnt/Serien` | Episodes end up in `series_dir/<Series>/Sxx/` |
 | `host` / `port` | `0.0.0.0` / `8080` | Listen address |
 | `secret_key` | generated | Session secret; if empty, one is created once in `.secret_key` next to the history |
+| `session_days` | `30` | Logins expire after this many days (and immediately on logout or a password change) |
+| `proxy_count` | `0` | Number of reverse proxies in front of the app — set it so the login lockout sees the real client IP |
 | `auth.username` | `admin` | Login name |
 | `auth.password_hash` | – | Hash from `app.py --hash-password` (preferred) |
 | `auth.password` | – | Plaintext fallback if no hash is set. Login stays disabled while neither is set — the old default `changeme` is refused |
@@ -200,6 +202,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `FOLDER_MOVER_USERNAME` / `_PASSWORD` / `_PASSWORD_HASH` | `auth.*` |
 | `FOLDER_MOVER_SECRET_KEY`, `FOLDER_MOVER_HOST`, `FOLDER_MOVER_PORT` | the matching keys |
 | `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER` | the matching keys |
+| `FOLDER_MOVER_SESSION_DAYS`, `FOLDER_MOVER_PROXY_COUNT` | the matching keys |
 | `FOLDER_MOVER_CONFIG` | path of the config file |
 | `FOLDER_MOVER_HISTORY` | path of `history.jsonl` (the session secret is stored next to it) |
 

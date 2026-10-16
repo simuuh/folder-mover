@@ -17,7 +17,11 @@ access to it like shell access to those folders.
 ## Built-in protections
 
 - Session login with constant-time comparison, optional password hashing and
-  a simple lockout after repeated failed logins
+  a simple lockout after repeated failed logins (behind a reverse proxy set
+  `proxy_count`, otherwise all clients share the proxy's IP)
+- Login is disabled until a password (hash) is set; the old default is refused
+- Sessions expire after `session_days` and become invalid on logout or when
+  the username/password changes
 - Every move/delete request is validated server-side: sources must lie inside
   `download_dir`, targets inside `movies_dir` / `series_dir` (symlinks and
   `..` are resolved first)

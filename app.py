@@ -14,6 +14,7 @@ import time
 from functools import wraps
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import history as hist
@@ -38,11 +39,20 @@ def _load_secret_key(cfg: dict) -> str:
     path = hist.HISTORY_FILE.parent / ".secret_key"
     try:
         if path.exists():
-            return path.read_text(encoding="utf-8").strip()
+            key = path.read_text(encoding="utf-8").strip()
+            if len(key) >= 32:
+                return key
+            # Empty/truncated (e.g. disk was full on first start) → would break every login
+            log.warning("Secret key file %s is empty or too short — creating a new one", path)
         key = secrets.token_hex(32)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.unlink(missing_ok=True)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(key)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
         return key
     except OSError as e:
         log.warning("Could not persist secret key (%s) — sessions end on restart", e)
@@ -57,6 +67,11 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     MAX_CONTENT_LENGTH=2 * 1024 * 1024,
 )
+if config.get("proxy_count"):
+    # Behind a reverse proxy: take the client IP (login lockout, logs) from
+    # X-Forwarded-For — otherwise everybody shares the proxy's IP and one
+    # attacker can lock out the real user.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=config["proxy_count"], x_proto=config["proxy_count"])
 
 def password_configured() -> bool:
     """A hash, or a plaintext password that is neither empty nor the shipped default."""
@@ -131,10 +146,48 @@ _login_failures: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
 
 
+_revoked_sessions: dict[str, float] = {}   # session id → time it expires anyway
+
+
+def _auth_fingerprint() -> str:
+    """Changes when username or password change → existing sessions become invalid."""
+    auth = config["auth"]
+    secret = str(auth.get("username", "")) + "\0" + str(auth.get("password_hash") or auth.get("password") or "")
+    return hmac.new(str(app.secret_key).encode(), secret.encode(), "sha256").hexdigest()[:32]
+
+
+def _session_max_age() -> float:
+    return float(config.get("session_days") or 30) * 86400
+
+
+def start_session(sess) -> None:
+    """Fill a fresh session after a successful login."""
+    sess.clear()
+    sess.permanent = False   # cookie ends with the browser; the server limit is session_days
+    sess.update(logged_in=True, sid=secrets.token_hex(16), login_at=time.time(), auth=_auth_fingerprint())
+
+
+def _session_valid() -> bool:
+    """
+    Flask sessions are signed cookies — without these checks a copied cookie
+    stayed valid forever, even after logout or a password change.
+    """
+    if not session.get("logged_in"):
+        return False
+    login_at = session.get("login_at")
+    if not isinstance(login_at, int | float) or time.time() - login_at > _session_max_age():
+        return False
+    if not hmac.compare_digest(str(session.get("auth", "")), _auth_fingerprint()):
+        return False
+    with _login_lock:
+        return session.get("sid") not in _revoked_sessions
+
+
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("logged_in"):
+        if not _session_valid():
+            session.clear()
             # API calls → 401 JSON, page calls → redirect
             if request.path.startswith("/api/"):
                 return api_error("api.not_authenticated", 401)
@@ -184,9 +237,9 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         if _check_credentials(username, password):
-            session.clear()
-            session.permanent = False   # survives until browser closes
-            session["logged_in"] = True
+            start_session(session)
+            with _login_lock:
+                _login_failures.pop(ip, None)
             return redirect(url_for("index"))
         _record_login_failure(ip)
         log.warning("Failed login for user %r from %s", username, ip)
@@ -197,6 +250,14 @@ def login():
 @app.route("/logout", methods=["POST"])
 def logout():
     # POST only: a GET logout could be triggered by any foreign page/image
+    sid, login_at = session.get("sid"), session.get("login_at")
+    if sid and isinstance(login_at, int | float):
+        now = time.time()
+        with _login_lock:
+            # Remember the logged-out id until the session would have expired anyway
+            for old in [s for s, exp in _revoked_sessions.items() if exp < now]:
+                del _revoked_sessions[old]
+            _revoked_sessions[sid] = login_at + _session_max_age()
     session.clear()
     return redirect(url_for("login"))
 
