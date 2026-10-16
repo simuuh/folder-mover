@@ -16,8 +16,8 @@ DEFAULT_CONFIG = {
     # UI language: "auto" (browser language), or a catalog name like "de" / "en".
     # The language switch in the header overrides this per browser.
     "language": "auto",
-    # Stable secret for session cookies. If empty, a random key is generated on
-    # every start (everyone gets logged out on restart).
+    # Stable secret for session cookies. If empty, one is generated once and
+    # stored in ".secret_key" next to history.jsonl.
     "secret_key": "",
     # Sessions end after this many days (and on logout / password change).
     "session_days": 30,

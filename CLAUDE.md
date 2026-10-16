@@ -26,9 +26,12 @@ app.py: api_scan() → threading.Thread → scanner.py: scan_downloads(config, o
    │                        │   indexiert alle vorhandenen Serienordner
    │                        ├─ find_releases(): löst Wrapper rekursiv auf (auch Wrapper im
    │                        │   Wrapper), liefert 0..n Releases (Ordner ODER lose Videodatei)
-   │                        ├─ classify(): Regex-Erkennung S01E01 / S01 / 1x01 / Folge NN / Jahr+Qualität
-   │                        ├─ library.match(): LCS-basiertes Fuzzy-Matching gegen NAS-Bibliothek
-   │                        └─ _dir_stats() / _find_movie_duplicate(): Grösse + .part-Erkennung bzw. NAS-Duplikate
+   │                        ├─ classify(): Regex-Erkennung S01E01 / S01 / 1x01 / Folge NN / Jahr+Qualität;
+   │                        │   "unknown"-Ordner werden über ihre Videonamen nachklassifiziert
+   │                        ├─ library.match(): normalisierter Vergleich gegen NAS-Bibliothek
+   │                        │   (automatisch nur bei identischem Schlüssel, sonst nur Hinweis)
+   │                        └─ _dir_stats() / MovieIndex.find_duplicate(): Grösse + .part-Erkennung bzw.
+   │                            NAS-Duplikate (Titel + Jahr, auch "Title (Year)"-Ordner)
    │
    ▼
 GET /api/scan-progress (Server-Sent Events, Poll alle 0.15s)
@@ -37,10 +40,15 @@ GET /api/scan-progress (Server-Sent Events, Poll alle 0.15s)
 Browser zeigt Karten zur manuellen Bestätigung/Bearbeitung an
    │  POST /api/move  { moves: [...] }
    ▼
-app.py validiert JEDEN Move serverseitig (_validate_move) → Thread → mover.py: execute_moves()
-   │   _copy_with_progress(): Chunked Copy (4 MB), fsync() periodisch (alle 64 MB + am Dateiende),
-   │   Speicherplatz-Check vor jedem Item, Teildatei wird bei Fehler gelöscht,
-   │   danach Quelle löschen (os.unlink / shutil.rmtree)
+app.py validiert JEDEN Move serverseitig (_validate_move, inkl. replaced_path) und prüft
+   │   mount_marker → Thread → mover.py: execute_moves()
+   │   _copy_with_progress(): Chunked Copy (4 MB) nach "<ziel>.fmpart", fsync() periodisch
+   │   (alle 64 MB + am Dateiende), erst dann os.replace auf den finalen Namen. Film-Ordner
+   │   entstehen komplett in "<ziel>.fmpart/" und werden am Ende umbenannt.
+   │   Vorher Snapshot (Größe+mtime) der Quelle: ändert sie sich während des Kopierens →
+   │   Rollback. Danach werden NUR die kopierten Dateien gelöscht, leere Ordner per rmdir.
+   │   Serien: nur Videos (ohne Samples) + passende Untertitel; Rest wird aufgeräumt.
+   │   Erst nach Erfolg: replaced_path (altes NAS-Release bei "Ersetzen") löschen.
    ▼
 GET /api/progress (Server-Sent Events, Poll alle 0.25s) → Live-Fortschrittsbalken
    │
@@ -74,66 +82,40 @@ worden (siehe Git-Historie) — beim Ändern von `scanner.py` immer gegen den ta
 | `templates/login.html` | Login-Formular |
 | `i18n.py` + `translations/*.json` | Übersetzungen (DE = Quelle, EN), Sprachwahl |
 | `static/theme.css` | Gemeinsame Design-Tokens Dark/Light für beide Templates |
-| `tests/` | pytest-Suite (Scanner, Mover, API inkl. Pfad-Validierung) |
+| `tests/` | pytest-Suite (Scanner, Mover, API inkl. Pfad-Validierung, i18n, Deployment-Dateien) |
 
 ### Auth-Modell
 
 Session-basierte Anmeldung (`app.py: require_auth`). Credentials aus
 `config.yaml: auth.username` + `auth.password_hash` (Werkzeug-Hash, erzeugt mit
 `python app.py --hash-password`) oder als Fallback `auth.password` im Klartext
-(Vergleich via `hmac.compare_digest`). Einfaches In-Memory-Lockout nach 5
-Fehlversuchen pro IP. Cookie `SameSite=Lax`/`HttpOnly`, Security-Header inkl. CSP
+(Vergleich via `hmac.compare_digest`). Ohne Hash und mit leerem oder Default-Passwort
+(`changeme`) ist der Login gesperrt (`password_configured()`). Die Session
+(`start_session()`) enthält Login-Zeit, zufällige `sid` und einen Fingerprint von
+Benutzer+Passwort: ungültig nach `session_days`, nach Logout (`sid` gesperrt, nur
+In-Memory) und nach Passwortwechsel. In Tests Sessions immer über
+`app_module.start_session(sess)` anlegen, nicht nur `logged_in=True`.
+In-Memory-Lockout nach 5 Fehlversuchen pro IP (hinter Reverse-Proxy `proxy_count`
+setzen → `ProxyFix`). Cookie `SameSite=Lax`/`HttpOnly`, Security-Header inkl. CSP
 in `after_request`. Gedacht für LAN/VPN — **nicht für Exposition ins offene Internet.**
 
-## Bekannte Performance-Falle: "Webapp lädt sehr lange, kein Fehler im Log"
+## NAS-Zugriffe und Performance
 
-Das war (Stand jetzt teilweise behoben, siehe unten) kein Bug im Sinne eines Fehlers,
-sondern **erwartetes Verhalten bei synchronen Filesystem-Operationen über
-Netzwerk-Mounts (SMB/NFS)**, die im Code zunächst nicht als potenziell langsam
-behandelt wurden:
+Alle Filesystem-Operationen sind synchron und laufen über Netzwerk-Mounts
+(SMB/NFS) — jeder `stat()`/`iterdir()` ist ein Roundtrip. Stand heute:
 
-1. **`/api/scan` konnte lange dauern, weil:**
-   - `SeriesLibrary._load()` (`scanner.py`) alle Einträge in `series_dir` einmal
-     iteriert — bei sehr vielen Serienordnern auf einem langsamen NAS-Mount messbar.
-     *(noch unverändert — siehe "Offene Punkte" unten)*
-   - `library.match()` für **jeden** Scan-Eintrag **alle** indexierten Serien
-     mit LCS vergleicht (`O(n_items × n_series × 60²)` Zeichenvergleiche).
-     *(noch unverändert)*
-   - ~~`_dir_size()` (heute `_dir_stats()`) für jeden gefundenen Release-Ordner per `os.walk` + `stat()`
-     **jede einzelne Datei** durchläuft, nur um die Anzeigegröße zu ermitteln.~~
-     **Behoben:** `_dir_size()` stat't jetzt nur noch Dateien mit einer
-     konfigurierten Video-Extension (Extras wie `.nfo`/`.srt`/Samples werden
-     ignoriert). Wenn kein Video gefunden wird, fällt sie auf einen reinen
-     Top-Level-`iterdir()` zurück statt eines vollen rekursiven Walks. Das
-     reduziert die Anzahl der `stat()`-Roundtrips pro Release spürbar.
-   - `_find_movie_duplicate()` iteriert bei Filmen **alle Buchstaben-Unterordner**
-     in `movies_dir` und darin **jeden Eintrag** mit Fuzzy-Match — ein voller
-     NAS-Directory-Walk pro Scan-Treffer. *(noch unverändert — siehe unten)*
+- `SeriesLibrary` und `MovieIndex` lesen `series_dir` bzw. `movies_dir` **einmal
+  pro Scan** (MovieIndex lazy beim ersten Film, Buchstaben-Ordner plus flache
+  Film-Ordner). `library.match()` cacht pro normalisiertem Schlüssel.
+- `_dir_stats()` stat't nur Videodateien (Fallback: Top-Level-`iterdir()`).
+- `_copy_with_progress()` macht `fsync()` nur alle `FSYNC_EVERY_BYTES` (64 MB) und
+  am Dateiende.
+- Leere oder fehlende Medienordner (typisch: NAS nicht gemountet) meldet der Scan
+  als Warnung (`config.library_warnings()`); mit `mount_marker` werden Moves dann
+  verweigert.
 
-2. **`/api/move` war durch Design langsam, nicht durch einen Bug:**
-   ~~`_copy_with_progress()` (`mover.py`) ruft nach **jedem einzelnen 4-MB-Chunk**
-   `flush()` + `os.fsync()` auf.~~
-   **Behoben:** `fsync()` wird jetzt nur noch periodisch ausgelöst
-   (`FSYNC_EVERY_BYTES`, aktuell alle 64 MB) statt nach jedem 4-MB-Chunk, plus
-   einmal am Dateiende, bevor Metadaten kopiert/die Quelle gelöscht wird. Das
-   vermeidet hunderte unnötige Sync-Roundtrips pro Datei, bei nur geringfügig
-   ungenauerer Live-Geschwindigkeitsanzeige (die jetzt alle ~64 MB statt alle
-   4 MB neu verankert wird).
-
-3. **Kein Server-Timeout, kein Heartbeat bei hängenden NAS-Calls:**
-   Flask läuft mit `threaded=True`, aber ein einzelner Request (z. B. `/api/scan`)
-   hat keine Zeitbegrenzung. Ein stockender Mount äußert sich also nicht als
-   Fehler, sondern als unbegrenzt langer Hang. *(noch unverändert — siehe unten)*
-
-### Offene Punkte (nicht in diesem Durchgang behoben)
-
-- `library.match()` cachen/vorberechnen statt pro Scan-Item neu über alle Serien
-  zu laufen (CPU-seitig, kein NAS-I/O, aber bei großen Bibliotheken relevant).
-- `_find_movie_duplicate()`: Analog zu `SeriesLibrary` einen Movies-Index einmal
-  pro Scan aufbauen statt pro Film-Treffer die komplette `movies_dir`-Struktur
-  erneut zu walken.
-- Für `/api/scan` ein explizites Timeout/Logging um die NAS-Zugriffe legen, damit
-  ein hängender Mount sich wenigstens als Log-Zeile zeigt statt als stiller Hang.
+**Offen:** Kein Timeout um NAS-Zugriffe — ein hängender Mount zeigt sich als
+endlos laufender Scan/Move ohne Log-Zeile.
 
 ## i18n (DE/EN)
 
@@ -170,6 +152,13 @@ behandelt wurden:
 - Commit-Messages mit passendem Präfix: `feat: …`, `fix: …`, `chore: …`
   (Beschreibung auf Deutsch ist ok).
 - Ein Branch = ein Thema. Mehrere unabhängige Themen → mehrere Branches.
+- **Mehrere Themen nacheinander, nicht parallel:** den nächsten Branch erst
+  anlegen, wenn der vorige in `main` gemergt ist (immer vom aktuellen `main`).
+  `mover.py`, `scanner.py` und `translations/*.json` werden von fast jedem Thema
+  angefasst — parallele Branches vom selben alten `main` erzeugen dort Konflikte.
+  Läuft doch einmal ein Branch parallel: vor dem Merge `git rebase main`.
+- Neue i18n-Schlüssel thematisch einsortieren (neben verwandte Schlüssel), nicht
+  pauschal ans Dateiende — das hält Diffs klein und konfliktfrei.
 - Vor dem Merge: `ruff check .` und `pytest` müssen grün sein.
 - Merge nach `main` per Pull Request oder lokal mit `git merge --no-ff <branch>`,
   danach den Branch löschen.
@@ -205,7 +194,14 @@ Branches inkompatible `scanner.py`-Versionen haben.
   `tests/test_app.py` absichern.
 - `/api/move` bekommt Quell-/Zielpfade vom Client — `_validate_move()` darf nicht
   umgangen werden (Quelle in `download_dir`, Ziel in `movies_dir`/`series_dir`,
-  `video_files` ohne `..`).
+  `video_files` ohne `..`, `replaced_path` in den Medienordnern und weder Ziel
+  noch im Ziel).
+- `require_sane_dirs`: Überschneiden sich `download_dir`/`movies_dir`/`series_dir`,
+  sind Scan, Move und Löschen gesperrt (409). `require_no_move`: kein Löschen
+  während eines Moves.
+- Der Mover löscht nach einem Move nur, was er selbst kopiert hat (Snapshot),
+  nie per `rmtree` den ganzen Quellordner. Daran nichts ändern, ohne
+  `tests/test_mover.py` (`test_files_appearing_*`) zu erweitern.
 - Frontend: Dateinamen stammen aus Downloads und sind **nicht vertrauenswürdig**.
   Niemals in `onclick`/Attribute interpolieren — Karten werden über den numerischen
   Key `item._k` + Event-Delegation (`data-action`) angesprochen, Text immer über
