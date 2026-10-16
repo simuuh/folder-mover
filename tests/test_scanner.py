@@ -230,3 +230,10 @@ def test_movie_duplicate_detection(tmp_path, existing, new, expected):
 ])
 def test_hyphenated_titles_and_hoster_suffix(name, title):
     assert scanner.classify(name)["title"] == title
+
+
+def test_unfinished_mover_copies_are_not_indexed(config, dirs):
+    (dirs["movies_dir"] / "D" / "Dune.2021.German.720p.BluRay-OLD.fmpart").mkdir(parents=True)
+    (dirs["series_dir"] / "Show.fmpart").mkdir()
+    assert scanner.MovieIndex(config["movies_dir"]).find_duplicate("Dune.2021.German.1080p.WEB-NEW", 2021) is None
+    assert scanner.SeriesLibrary(config["series_dir"]).all_names() == []

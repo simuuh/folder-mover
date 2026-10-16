@@ -1,4 +1,5 @@
 from collections import namedtuple
+from pathlib import Path
 
 import pytest
 from conftest import UUID_A, make_files
@@ -189,3 +190,51 @@ def test_series_progress_counts_only_video_files(dirs):
     rel = dirs["download_dir"] / "Show.S01.German.1080p.WEB-GRP"
     make_files(rel, "e01.mkv", "info.nfo", size=10)
     assert mover._calc_size({"source_release": str(rel), "type": "series", "video_files": ["e01.mkv"]}) == 10
+
+
+def test_interrupted_copy_never_leaves_file_under_final_name(tmp_path):
+    # Simulates SIGKILL/OOM/`docker stop` mid-copy: the except-cleanup never runs
+    import subprocess
+    import sys
+    src, dst = tmp_path / "src.mkv", tmp_path / "dst.mkv"
+    src.write_bytes(b"x" * (3 * mover.CHUNK_SIZE))
+    script = (
+        "import os, sys; sys.path.insert(0, sys.argv[1]); from pathlib import Path; import mover\n"
+        "def cb(name, copied, total, chunk):\n"
+        "    if copied >= mover.CHUNK_SIZE: os._exit(9)\n"
+        "mover._copy_with_progress(Path(sys.argv[2]), Path(sys.argv[3]), cb)\n"
+    )
+    root = str(Path(mover.__file__).parent)
+    assert subprocess.run([sys.executable, "-c", script, root, str(src), str(dst)]).returncode == 9
+    assert not dst.exists()
+    assert (tmp_path / "dst.mkv.fmpart").exists()          # clearly unfinished
+
+    # the next attempt replaces the leftover and completes
+    mover._copy_with_progress(src, dst, lambda *a: None)
+    assert dst.stat().st_size == src.stat().st_size
+    assert not (tmp_path / "dst.mkv.fmpart").exists()
+
+
+def test_movie_folder_is_staged_and_renamed_when_complete(config, dirs, monkeypatch):
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/a.mkv", f"{rel}/b.nfo")
+    dest = dirs["movies_dir"] / "M" / rel
+    seen = []
+    real_copy = mover._copy_with_progress
+
+    def spy(src, dst, cb):
+        seen.append(dst.parent.name)
+        assert not dest.exists()                             # final name appears only at the end
+        real_copy(src, dst, cb)
+
+    monkeypatch.setattr(mover, "_copy_with_progress", spy)
+    (dirs["movies_dir"] / "M" / f"{rel}.fmpart").mkdir(parents=True)   # leftover of a crash
+    result = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "movie",
+    }], config)[0]
+
+    assert result["ok"], result
+    assert set(seen) == {f"{rel}.fmpart"}
+    assert sorted(p.name for p in dest.iterdir()) == ["a.mkv", "b.nfo"]
+    assert not (dirs["movies_dir"] / "M" / f"{rel}.fmpart").exists()
