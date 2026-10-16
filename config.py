@@ -86,19 +86,38 @@ def load_config(path: str | None = None) -> dict:
     return config
 
 
+DIR_KEYS = ("download_dir", "movies_dir", "series_dir")
+
+
+def dir_overlaps(config: dict) -> list[tuple[str, str]]:
+    """
+    Pairs of configured directories that are equal or nested in each other.
+    Such a setup is refused: the scanner would offer the media library as
+    "downloads", and moves/deletes could hit the library.
+    """
+    dirs = {key: os.path.realpath(config[key]) for key in DIR_KEYS}
+    overlaps = []
+    for i, a in enumerate(DIR_KEYS):
+        for b in DIR_KEYS[i + 1:]:
+            try:
+                common = os.path.commonpath([dirs[a], dirs[b]])
+            except ValueError:   # different drives on Windows
+                continue
+            if common in (dirs[a], dirs[b]):
+                overlaps.append((a, b))
+    return overlaps
+
+
 def check_config(config: dict) -> list[str]:
     """Human-readable problems with the configured directories (logged at startup)."""
     problems = []
-    dirs = {key: os.path.realpath(config[key]) for key in ("download_dir", "movies_dir", "series_dir")}
-    for key, path in dirs.items():
+    for key in DIR_KEYS:
+        path = os.path.realpath(config[key])
         if not os.path.isdir(path):
             problems.append(f"{key} does not exist: {path}")
-    keys = list(dirs)
-    for i, a in enumerate(keys):
-        for b in keys[i + 1:]:
-            pa, pb = dirs[a], dirs[b]
-            if pa == pb or pa.startswith(pb + os.sep) or pb.startswith(pa + os.sep):
-                problems.append(f"{a} and {b} overlap ({pa} / {pb}) — moves/deletes may hit the wrong files")
+    for a, b in dir_overlaps(config):
+        problems.append(f"{a} and {b} overlap ({os.path.realpath(config[a])} / {os.path.realpath(config[b])}) "
+                        "— scan, move and delete are disabled until this is fixed")
     return problems
 
 

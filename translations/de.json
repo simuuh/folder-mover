@@ -159,6 +159,7 @@
   "api.path_outside_downloads": "Pfad liegt ausserhalb des Download-Verzeichnisses",
   "api.path_not_found": "Pfad nicht gefunden",
   "api.invalid_replace": "Ungültiges zu ersetzendes Release",
+  "api.dirs_overlap": "Konfiguration unsicher: {a} und {b} überschneiden sich. Scan, Verschieben und Löschen sind gesperrt, bis die Pfade getrennt sind.",
 
   "mover.source_missing": "Quelle existiert nicht mehr",
   "mover.file_not_found": "Datei nicht gefunden: {name}",
