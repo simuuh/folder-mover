@@ -35,11 +35,12 @@ moves everything into place after **you** confirmed it. With a live progress bar
 | 🪆 **Wrapper unwrapping** | UUID folders, hoster suffixes (`- rapidgator`), double-nested release folders — **also wrappers inside wrappers** and wrappers holding several releases |
 | 📚 **Library matching** | Matches against existing NAS series folders (ignoring case, punctuation, articles, years and accents), so `The.Boys.S05` lands in your existing `The Boys (2019)/` — similar names are only suggested |
 | 🔁 **Duplicate detection** | Finds an older release of the same movie (title + year, also `Title (Year)` folders) and offers to replace it — the old one is deleted only after the new one arrived |
-| ⏳ **Unfinished downloads** | Releases with `.part` / `.crdownload` files are flagged and deselected |
+| ⏳ **Unfinished downloads** | Releases with `.part` / `.crdownload` files are flagged and deselected; a release that still changes while it is copied is not moved |
+| 🎞️ **Episodes, not junk** | Series moves take the episodes and their subtitles (`.srt`, `.ass`, …) — samples and `.nfo` files are left behind and cleaned up |
 | ⚡ **Instant moves** | Same filesystem? Then it's a rename, not a copy |
 | 🐳 **Docker or bare metal** | Multi-arch image (amd64/arm64) or a systemd service |
 | 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload |
-| 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; no half-copied files left behind; all paths validated server-side |
+| 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; copies get their final name only when complete (`.fmpart` until then); optional mount marker against unmounted shares; all paths validated server-side |
 | 🗂️ **History** | Searchable log of every move, filterable by type and errors |
 | 🌗 **Dark & light** | Follows your OS theme, switchable in the header |
 
