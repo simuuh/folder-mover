@@ -227,6 +227,14 @@ def _validate_move(move: dict) -> str | None:
     for vf in move.get("video_files") or []:
         if not isinstance(vf, str) or not _is_within(os.path.join(base, vf), base):
             return "api.invalid_video_path"
+    replaced = move.get("replaced_path")
+    if replaced is not None:
+        # Deleted by the mover after a successful move → same rules as /api/delete-nas,
+        # and it must not contain the new destination (or vice versa)
+        if (not isinstance(replaced, str) or not replaced
+                or not (_is_within(replaced, config["movies_dir"]) or _is_within(replaced, config["series_dir"]))
+                or _is_within(dest, replaced, allow_equal=True) or _is_within(replaced, dest)):
+            return "api.invalid_replace"
     return None
 
 

@@ -1533,15 +1533,8 @@ async function replaceNas(k) {
   );
   if (!confirmed) return;
 
-  try {
-    await api('/api/delete-nas', { path: duplicatePath });
-    toast(t('delete.done', { name: basename(duplicatePath) }), 'info');
-  } catch (err) {
-    toast(t('delete.failed', { error: err.message }), 'error');
-    return;
-  }
-
-  // Select only this item and move without second confirm
+  // Select only this item and move without second confirm. The server deletes
+  // the old release only after the new one arrived — a failed move keeps it.
   items.forEach(i => setSelected(i._k, i._k === k));
   await confirmMove(true, duplicatePath);
 }

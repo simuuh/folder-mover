@@ -47,6 +47,28 @@ def _err(key: str, text: str, **args) -> dict:
     return {"key": key, "args": args, "text": text}
 
 
+def _replace_old_release(old: str, result: dict):
+    """
+    Delete the release that the new one replaces — only now that the new one
+    is safely on the NAS. If that fails the move still counts, with a warning.
+    """
+    target = os.path.realpath(old)
+    try:
+        if os.path.isdir(target) and not os.path.islink(target):
+            shutil.rmtree(target)
+        elif os.path.lexists(target):
+            os.unlink(target)
+        log.info("Replaced old release: %s", target)
+        result["replaced_path"] = old
+    except OSError as e:
+        log.warning("Could not delete replaced release %s: %s", target, e)
+        warning = _err("mover.replace_failed", f"Old release could not be deleted: {old} ({e})",
+                       path=old, error=e.strerror or str(e))
+        result["warnings"] = [*(result.get("warnings") or []), warning["text"]]
+        result["warnings_i18n"] = [*(result.get("warnings_i18n") or []),
+                                   {"key": warning["key"], "args": warning["args"]}]
+
+
 def _warnings(warnings: list[dict]) -> dict:
     """`warnings` / `warnings_i18n` of a successful result (same shape as errors)."""
     return {"warnings": [w["text"] for w in warnings] or None,
@@ -136,6 +158,8 @@ def execute_moves(
                 )
 
             result = _do_move(move, config, on_chunk)
+            if result["ok"] and move.get("replaced_path"):
+                _replace_old_release(move["replaced_path"], result)
             results.append(result)
             if not result["ok"]:
                 with _progress_lock:
