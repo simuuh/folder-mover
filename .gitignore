@@ -27,3 +27,6 @@ htmlcov/
 
 # Generated session secret
 .secret_key
+
+# Docker settings (contain credentials)
+.env
