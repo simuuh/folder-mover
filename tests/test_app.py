@@ -387,3 +387,19 @@ def test_proxy_count_is_read_as_int(tmp_path, monkeypatch):
     from config import load_config
     monkeypatch.setenv("FOLDER_MOVER_PROXY_COUNT", "1")
     assert load_config(str(tmp_path / "missing.yaml"))["proxy_count"] == 1
+
+
+def test_scan_progress_without_scan_ends_immediately(auth_client, monkeypatch):
+    monkeypatch.setattr(app_module, "_scan_progress", {})
+    body = auth_client.get("/api/scan-progress").get_data(as_text=True)   # would hang before
+    final = json.loads(body.splitlines()[0][5:])
+    assert final == {"done": True, "items": [], "error": None}
+
+
+@pytest.mark.parametrize("endpoint", ["/api/delete", "/api/delete-nas"])
+def test_delete_is_refused_while_moving(auth_client, dirs, monkeypatch, endpoint):
+    make_files(dirs["download_dir"], "Junk/a.mkv")
+    monkeypatch.setattr(app_module, "_move_running", True)
+    resp = auth_client.post(endpoint, json={"path": str(dirs["download_dir"] / "Junk")})
+    assert resp.status_code == 409 and resp.get_json()["error_key"] == "api.move_running"
+    assert (dirs["download_dir"] / "Junk" / "a.mkv").exists()
