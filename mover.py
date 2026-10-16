@@ -9,12 +9,14 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from config import PARTIAL_SUFFIX, video_extensions
-from scanner import RE_SEASON_EP, RE_SxE
+from config import PARTIAL_SUFFIX
+from scanner import RE_SEASON_EP, RE_SxE, find_videos
 
 log = logging.getLogger(__name__)
 
 CHUNK_SIZE = 4 * 1024 * 1024  # 4 MB read chunks
+SUBTITLE_EXTENSIONS = {".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt", ".sup"}
+SUBTITLE_DIRS = ("Subs", "subs", "Subtitles", "subtitles")
 FSYNC_EVERY_BYTES = 64 * 1024 * 1024  # fsync at most every 64 MB (not every chunk)
 
 # ── Global progress state (single-user tool) ──────────────────────────────────
@@ -185,16 +187,13 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         moved, errors = [], []
 
         if not video_files:
-            exts = video_extensions(config)
             if source_release.is_file():
                 video_files = [source_release.name]
                 source_base = source_release.parent
             else:
                 source_base = source_release
-                for root, _, files in os.walk(source_release):
-                    for f in files:
-                        if Path(f).suffix.lower() in exts:
-                            video_files.append(str(Path(root).relative_to(source_release) / f))
+                video_files = [v.relative_to(source_release).as_posix()
+                               for v in find_videos(source_release, config)]
         else:
             source_base = source_release if source_release.is_dir() else source_release.parent
 
@@ -223,6 +222,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                 item_copied += size
                 on_chunk(src_file.name, item_copied, item_total, size)
                 moved.append(str(dst_file))
+                _move_subtitles(src_file, dst_file, single_video=len(video_files) == 1 and not is_loose)
                 continue
 
             # Checked before the first real copy — also when source and target
@@ -260,6 +260,7 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             item_copied += before[0]
             src_file.unlink(missing_ok=True)
             moved.append(str(dst_file))
+            _move_subtitles(src_file, dst_file, single_video=len(video_files) == 1 and not is_loose)
 
         _cleanup_after_series_move(source_top, source_release, config)
 
@@ -483,15 +484,50 @@ def _calc_size(move: dict) -> int:
     return total
 
 
+def _subtitles_for(video: Path, single_video: bool) -> list[tuple[Path, str]]:
+    """
+    (subtitle file, target suffix) belonging to `video`: next to it or in a
+    Subs/ folder, named after the video ("show.s01e01.de.srt" → ".de.srt").
+    For a release with a single video, every subtitle there belongs to it
+    ("Subs/English.srt" → ".English.srt").
+    """
+    stem = video.stem.lower()
+    found = []
+    for folder in (video.parent, *(video.parent / d for d in SUBTITLE_DIRS)):
+        if not folder.is_dir():
+            continue
+        for f in sorted(folder.iterdir()):
+            if not f.is_file() or f.suffix.lower() not in SUBTITLE_EXTENSIONS:
+                continue
+            if f.name.lower().startswith(stem + "."):
+                found.append((f, f.name[len(stem):]))
+            elif single_video:
+                found.append((f, "." + f.name))
+    return found
+
+
+def _move_subtitles(video: Path, dst_video: Path, single_video: bool):
+    """Move the subtitles of an episode next to it (best effort, never fails the move)."""
+    for sub, suffix in _subtitles_for(video, single_video):
+        target = dst_video.with_name(dst_video.stem + suffix)
+        if target.exists():
+            continue
+        try:
+            if not _try_rename(sub, target):
+                _copy_with_progress(sub, target, lambda *a: None)
+                sub.unlink(missing_ok=True)
+            log.info("Moved subtitle: %s → %s", sub, target)
+        except OSError as e:
+            log.warning("Could not move subtitle %s: %s", sub, e)
+
+
 def _cleanup_after_series_move(source_top: Path, source_release: Path, config: dict):
-    exts = video_extensions(config)
+    """
+    Remove the source once all episodes are gone. What is left are extras
+    that series folders don't keep (.nfo, samples, screenshots, unrelated subs).
+    """
     if source_release.is_dir():
-        has_video = any(
-            Path(f).suffix.lower() in exts
-            for _, _, files in os.walk(source_release)
-            for f in files
-        )
-        if has_video:
+        if find_videos(source_release, config):
             return
         log.info("Removing video-less source: %s", source_release)
         shutil.rmtree(str(source_release), ignore_errors=True)

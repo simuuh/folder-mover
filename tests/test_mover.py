@@ -366,3 +366,51 @@ def test_unexpected_error_is_translatable(config, dirs, monkeypatch):
     result = mover.execute_moves([{"source_release": str(dirs["download_dir"] / "Movie.2022.German.1080p.WEB-GRP"),
                                    "type": "movie"}], config)[0]
     assert result["error_i18n"][0]["key"] == "mover.unexpected"
+
+
+def _series_move(dirs, rel, video_files):
+    src = dirs["download_dir"] / rel
+    return {"source_release": str(src), "source_top": str(src), "type": "series",
+            "dest_dir": str(dirs["series_dir"] / "Show" / "S01"), "video_files": video_files}
+
+
+def test_season_pack_sample_is_not_moved_as_episode(config, dirs):
+    from scanner import scan_downloads
+    rel = "Show.S01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/show.s01e01.mkv", f"{rel}/Sample/show.s01e01.sample.mkv",
+               f"{rel}/show.s01e02-sample.mkv")
+    item = scan_downloads(config)[0]
+    assert item["suggestion"]["video_files"] == ["show.s01e01.mkv"]
+
+    result = mover.execute_moves([_series_move(dirs, rel, item["suggestion"]["video_files"])], config)[0]
+    assert result["ok"]
+    assert [p.name for p in (dirs["series_dir"] / "Show" / "S01").iterdir()] == ["show.s01e01.mkv"]
+    assert not (dirs["download_dir"] / rel).exists()          # only the sample was left → cleaned up
+
+
+def test_subtitles_are_moved_with_their_episode(config, dirs):
+    rel = "Show.S01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/show.s01e01.mkv", f"{rel}/show.s01e01.de.srt",
+               f"{rel}/Subs/show.s01e01.en.forced.srt", f"{rel}/show.s01e02.mkv", f"{rel}/show.nfo")
+    result = mover.execute_moves([_series_move(dirs, rel, ["show.s01e01.mkv", "show.s01e02.mkv"])], config)[0]
+    assert result["ok"]
+    assert sorted(p.name for p in (dirs["series_dir"] / "Show" / "S01").iterdir()) == [
+        "show.s01e01.de.srt", "show.s01e01.en.forced.srt", "show.s01e01.mkv", "show.s01e02.mkv"]
+
+
+def test_single_episode_takes_generic_subtitles(config, dirs):
+    rel = "Show.S01E01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/{rel}.mkv", f"{rel}/Subs/English.srt")
+    assert mover.execute_moves([_series_move(dirs, rel, [f"{rel}.mkv"])], config)[0]["ok"]
+    assert (dirs["series_dir"] / "Show" / "S01" / f"{rel}.English.srt").exists()
+
+
+def test_loose_episode_does_not_take_unrelated_subtitles(config, dirs):
+    make_files(dirs["download_dir"], "Show.S01E01.mkv", "Show.S01E01.de.srt", "Other.Movie.srt")
+    move = {"source_release": str(dirs["download_dir"] / "Show.S01E01.mkv"),
+            "source_top": str(dirs["download_dir"] / "Show.S01E01.mkv"), "type": "series", "is_loose_file": True,
+            "dest_dir": str(dirs["series_dir"] / "Show" / "S01"), "video_files": ["Show.S01E01.mkv"]}
+    assert mover.execute_moves([move], config)[0]["ok"]
+    assert sorted(p.name for p in (dirs["series_dir"] / "Show" / "S01").iterdir()) == [
+        "Show.S01E01.de.srt", "Show.S01E01.mkv"]
+    assert (dirs["download_dir"] / "Other.Movie.srt").exists()
