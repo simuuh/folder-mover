@@ -47,6 +47,8 @@ app.py validiert JEDEN Move serverseitig (_validate_move, inkl. replaced_path) u
    │   entstehen komplett in "<ziel>.fmpart/" und werden am Ende umbenannt.
    │   Vorher Snapshot (Größe+mtime) der Quelle: ändert sie sich während des Kopierens →
    │   Rollback. Danach werden NUR die kopierten Dateien gelöscht, leere Ordner per rmdir.
+   │   Filme: Dateien/Ordner nach `junk_patterns` (config.py: is_junk) werden nicht kopiert,
+   │   nur mit der Quelle gelöscht.
    │   Serien: nur Videos (ohne Samples) + passende Untertitel; Rest wird aufgeräumt.
    │   Erst nach Erfolg: replaced_path (altes NAS-Release bei "Ersetzen") löschen.
    ▼

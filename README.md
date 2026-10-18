@@ -193,6 +193,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `auth.password` | – | Plaintext fallback if no hash is set. Login stays disabled while neither is set — the old default `changeme` is refused |
 | `video_extensions` | `.mkv .mp4 .avi .m4v .ts .m2ts` | What counts as a video |
 | `wrapper_patterns` | `[]` | Extra regexes for container folders that are never a release |
+| `junk_patterns` | `*.url *.lnk rushchk.log …` | Glob patterns for junk files/folders in movie releases (hoster shortcuts, checker logs, …): not copied, deleted with the download. Replaces the defaults — see `config.yaml.example` |
 | `mount_marker` | – | File/folder that must exist in `movies_dir` **and** `series_dir` before anything is moved (e.g. `.folder-mover`) — protects against filling the empty mountpoint of an unmounted share |
 
 **Environment variables** override `config.yaml`:

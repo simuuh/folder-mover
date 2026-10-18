@@ -1,7 +1,9 @@
 """Configuration loader for Folder Mover."""
 
+import fnmatch
 import logging
 import os
+from pathlib import Path
 
 import yaml
 
@@ -40,6 +42,15 @@ DEFAULT_CONFIG = {
     "wrapper_patterns": [],
     # Extensions considered video files (used to find the actual content)
     "video_extensions": [".mkv", ".mp4", ".avi", ".m4v", ".ts", ".m2ts"],
+    # Glob patterns (case-insensitive) for junk that is never copied to the NAS
+    # and deleted with the download: hoster shortcuts, checker logs, release
+    # banners. Matched against every file and folder name inside a release.
+    # Setting this replaces the defaults; [] copies everything.
+    "junk_patterns": [
+        "*.url", "*.lnk", "*.website", "*.webloc", "*.desktop",
+        "rushchk.log", "*- COMPLETE )*",
+        "thumbs.db", "desktop.ini", ".ds_store",
+    ],
 }
 
 DEFAULT_PASSWORD = DEFAULT_CONFIG["auth"]["password"]
@@ -174,3 +185,12 @@ def video_extensions(config: dict) -> set[str]:
     """Configured video extensions, normalised to lowercase with a leading dot."""
     exts = config.get("video_extensions") or DEFAULT_CONFIG["video_extensions"]
     return {e.lower() if e.startswith(".") else "." + e.lower() for e in exts}
+
+
+def is_junk(rel_path: Path, config: dict) -> bool:
+    """True if any part of `rel_path` (relative to the release) matches `junk_patterns`."""
+    patterns = config.get("junk_patterns")
+    if patterns is None:
+        patterns = DEFAULT_CONFIG["junk_patterns"]
+    return any(fnmatch.fnmatchcase(part.lower(), pat.lower())
+               for part in rel_path.parts for pat in patterns)

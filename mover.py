@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from config import PARTIAL_SUFFIX, missing_mount_markers
+from config import PARTIAL_SUFFIX, is_junk, missing_mount_markers
 from scanner import RE_SEASON_EP, RE_SxE, find_videos
 
 log = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ def execute_moves(
     `on_done(results)` runs BEFORE the progress state switches to finished, so
     anything the client reloads on "finished" (results, history) already exists.
     """
-    total_bytes = sum(_calc_size(m) for m in moves)
+    total_bytes = sum(_calc_size(m, config) for m in moves)
     copied_bytes = 0
 
     _set(
@@ -310,14 +310,17 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
         src = source_release
         # What exists now is exactly what gets copied — and later deleted
         snapshot = _snapshot(src)
+        # Junk (hoster shortcuts, checker logs, ...) is not copied, only deleted
+        junk = [] if src.is_file() else [f for f in snapshot if is_junk(f.relative_to(src), config)]
         if src.is_file():
             files_to_copy = [(src, dest_dir)]
         else:
-            files_to_copy = [(fsrc, dest_dir / fsrc.relative_to(src)) for fsrc in snapshot]
-        item_total = sum(size for size, _ in snapshot.values())
+            files_to_copy = [(fsrc, dest_dir / fsrc.relative_to(src)) for fsrc in snapshot if fsrc not in junk]
+        item_total = sum(snapshot[fsrc][0] for fsrc, _ in files_to_copy)
 
         # Same filesystem (e.g. Docker on the NAS): one atomic rename, no copy
         if _try_rename(src, dest_dir):
+            _delete_files([dest_dir / f.relative_to(src) for f in junk], dest_dir)
             on_chunk(src.name, item_total, item_total, item_total)
             if source_top != source_release and source_top.exists():
                 _remove_if_empty(source_top)
@@ -368,8 +371,8 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
                     "mover.source_changed", "Download is still being written (files changed during the copy)"))
             raise
 
-        # Delete only what was copied; files that appeared meanwhile stay
-        for fsrc, _ in files_to_copy:
+        # Delete only what was copied (or skipped as junk); files that appeared meanwhile stay
+        for fsrc in [f for f, _ in files_to_copy] + junk:
             fsrc.unlink(missing_ok=True)
         warnings = []
         if src.is_dir():
@@ -487,7 +490,7 @@ class _SpeedTracker:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _calc_size(move: dict) -> int:
+def _calc_size(move: dict, config: dict | None = None) -> int:
     """Bytes that will actually be copied for this move (for the overall progress bar)."""
     src = Path(move["source_release"])
     if not src.exists():
@@ -506,8 +509,11 @@ def _calc_size(move: dict) -> int:
     total = 0
     for root, _, files in os.walk(src):
         for f in files:
+            path = Path(root) / f
+            if move.get("type") != "series" and is_junk(path.relative_to(src), config or {}):
+                continue
             try:
-                total += (Path(root) / f).stat().st_size
+                total += path.stat().st_size
             except OSError:
                 pass
     return total
@@ -595,6 +601,19 @@ def _snapshot(src: Path) -> dict[Path, tuple[int, int]]:
             f = Path(root) / fname
             snap[f] = _stat_key(f)
     return snap
+
+
+def _delete_files(files: list[Path], root: Path):
+    """Delete `files` and the folders that become empty by it, up to (not including) `root`."""
+    for f in files:
+        f.unlink(missing_ok=True)
+        parent = f.parent
+        while parent != root and root in parent.parents:
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
 
 
 def _remove_empty_dirs(path: Path):
