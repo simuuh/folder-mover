@@ -45,6 +45,23 @@ video_extensions:
   - .ts
   - .m2ts
 
+# ── Junk that is never copied to the NAS ──────────────────────────────────────
+# Glob patterns (* ? [abc], case-insensitive) matched against every file and
+# folder name inside a movie release. Matches are not copied and are deleted
+# together with the download. Setting this list REPLACES the defaults below —
+# copy them and extend. [] copies everything.
+junk_patterns:
+  - '*.url'                 # "Rapidgator Premium Account" etc.
+  - '*.lnk'
+  - '*.website'
+  - '*.webloc'
+  - '*.desktop'
+  - 'rushchk.log'
+  - '*- COMPLETE )*'        # "[---] - ( 4932M 52F - COMPLETE ) - [---]"
+  - 'thumbs.db'
+  - 'desktop.ini'
+  - '.ds_store'
+
 # ── Extra wrapper folders ─────────────────────────────────────────────────────
 # Python regexes for folder names that are never a release but only a container
 # (UUID folders are always recognised). Matching folders are looked through,

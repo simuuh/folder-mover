@@ -31,6 +31,43 @@ def test_same_filesystem_movie_is_renamed(config, dirs, monkeypatch):
     assert not (dirs["download_dir"] / UUID_A).exists()
 
 
+JUNK_RELEASE = ("movie.mkv", "movie.nfo", "Extras/making-of.mkv", "rushchk.log",
+                "Rapidgator Premium Account.url", "[---] - ( 4932M 52F - COMPLETE ) - [---]",
+                "Links/ddownload.url")
+
+
+def _move_junk_release(config, dirs):
+    rel = "Movie.2022.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], *(f"{rel}/{f}" for f in JUNK_RELEASE))
+    dest = dirs["movies_dir"] / "M" / rel
+    result = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "movie",
+    }], config)[0]
+    assert result["ok"], result
+    assert not (dirs["download_dir"] / rel).exists()            # junk is deleted with the download
+    return result, sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*"))
+
+
+def test_movie_junk_is_not_copied(config, dirs):
+    result, moved = _move_junk_release(config, dirs)
+    assert moved == ["Extras", "Extras/making-of.mkv", "movie.mkv", "movie.nfo"]
+    assert result["size_bytes"] == 3 * 16
+    assert result["warnings"] is None
+
+
+@pytest.mark.rename
+def test_movie_junk_is_removed_after_rename(config, dirs):
+    result, moved = _move_junk_release(config, dirs)
+    assert result["renamed"]
+    assert moved == ["Extras", "Extras/making-of.mkv", "movie.mkv", "movie.nfo"]
+
+
+def test_junk_patterns_can_be_configured(config, dirs):
+    _, moved = _move_junk_release({**config, "junk_patterns": ["*.LOG"]}, dirs)
+    assert "rushchk.log" not in moved and "Rapidgator Premium Account.url" in moved
+
+
 @pytest.mark.rename
 def test_same_filesystem_episode_is_renamed(config, dirs, monkeypatch):
     fname = "Show.S01E01.German.1080p.WEB-GRP.mkv"
