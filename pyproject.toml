@@ -1,6 +1,6 @@
 [project]
 name = "folder-mover"
-version = "1.5.0"
+version = "1.5.1"
 description = "Self-hosted web UI that sorts movie and series downloads into a NAS library"
 readme = "README.md"
 license = { text = "MIT" }
