@@ -349,6 +349,11 @@
     gap: 10px;
     flex-wrap: wrap;
   }
+  .note.marked {
+    color: var(--red);
+    background: color-mix(in srgb, var(--red) 8%, transparent);
+    border-color: color-mix(in srgb, var(--red) 30%, transparent);
+  }
   .note code {
     font-family: var(--mono);
     font-size: 10px;
@@ -1119,6 +1124,7 @@ function buildUI() {
       season: s.season || 1,
       movieName: item.release_name,
       destDir: s.dest_dir || '',              // authoritative from server
+      replace: false,                         // delete s.duplicate_path after a successful move
     };
   });
 
@@ -1307,10 +1313,12 @@ function buildBody(item, cs) {
     </div>`;
 
   if (cs.type === 'movie' && s.duplicate_path) {
+    const label = cs.replace ? t('card.replace_marked') : t('card.duplicate');
+    const btn   = cs.replace ? t('card.replace_undo')   : t('card.replace');
     html += `
-      <div class="note">
-        <span>${escHtml(t('card.duplicate'))} <code>${escHtml(basename(s.duplicate_path))}</code></span>
-        <button class="btn btn-xs" data-action="replace">${escHtml(t('card.replace'))}</button>
+      <div class="note${cs.replace ? ' marked' : ''}">
+        <span>${escHtml(label)} <code>${escHtml(basename(s.duplicate_path))}</code></span>
+        <button class="btn btn-xs" data-action="replace" aria-pressed="${cs.replace}">${escHtml(btn)}</button>
       </div>`;
   }
 
@@ -1360,7 +1368,7 @@ itemsList.addEventListener('click', (e) => {
     case 'toggle':  toggleExpand(k); break;
     case 'skip':    setSelected(k, false); break;
     case 'delete':  deleteItem(k); break;
-    case 'replace': replaceNas(k); break;
+    case 'replace': toggleReplace(k); break;
   }
 });
 
@@ -1523,40 +1531,40 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Move ──────────────────────────────────────────────────────────────────────
-async function replaceNas(k) {
-  const item = itemByKey(k);
-  if (!item) return;
-  const duplicatePath = item.suggestion.duplicate_path;
-
-  const confirmed = await showConfirm(
-    t('replace.confirm_title'),
-    t('replace.confirm_body', { old: basename(duplicatePath), new: item.release_name }),
-    t('replace.button')
-  );
-  if (!confirmed) return;
-
-  // Select only this item and move without second confirm. The server deletes
-  // the old release only after the new one arrived — a failed move keeps it.
-  items.forEach(i => setSelected(i._k, i._k === k));
-  await confirmMove(true, duplicatePath);
+// "Replace old" only marks the card; the old NAS release is deleted by the
+// server after this item was moved successfully as part of the normal move.
+function toggleReplace(k) {
+  const cs = cardState[k];
+  if (!cs || !itemByKey(k)?.suggestion.duplicate_path) return;
+  cs.replace = !cs.replace;
+  if (cs.replace) setSelected(k, true);
+  renderBody(k);
 }
 
-async function confirmMove(skipConfirm = false, replacedPath = null) {
+function replacedPathFor(item) {
+  const cs = cardState[item._k];
+  return cs.replace && cs.type === 'movie' ? (item.suggestion.duplicate_path || null) : null;
+}
+
+async function confirmMove() {
   const selected = items.filter(i => cardState[i._k]?.selected);
   if (selected.length === 0) return;
 
-  if (!skipConfirm) {
-    const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
-    const incomplete = selected.filter(i => i.incomplete).length;
-    const confirmed = await showConfirm(
-      t('move.confirm_title', { count: selected.length }),
-      t('move.confirm_body', { count: selected.length, size: fmtSize(totalBytes) }) +
-      (incomplete ? '\n\n' + t('move.confirm_incomplete', { count: incomplete }) : '') +
-      '\n\n' + t('move.irreversible'),
-      t('move.button')
-    );
-    if (!confirmed) return;
-  }
+  const totalBytes = selected.reduce((a, i) => a + (i.size_bytes || 0), 0);
+  const incomplete = selected.filter(i => i.incomplete).length;
+  const replacing  = selected.filter(i => replacedPathFor(i));
+  const confirmed = await showConfirm(
+    t('move.confirm_title', { count: selected.length }),
+    t('move.confirm_body', { count: selected.length, size: fmtSize(totalBytes) }) +
+    (incomplete ? '\n\n' + t('move.confirm_incomplete', { count: incomplete }) : '') +
+    (replacing.length
+      ? '\n\n' + t('move.confirm_replace', { count: replacing.length }) + '\n' +
+        replacing.map(i => '• ' + basename(replacedPathFor(i))).join('\n')
+      : '') +
+    '\n\n' + t('move.irreversible'),
+    t('move.button')
+  );
+  if (!confirmed) return;
 
   const moves = selected.map(item => {
     const cs = cardState[item._k];
@@ -1567,8 +1575,7 @@ async function confirmMove(skipConfirm = false, replacedPath = null) {
       type:           cs.type,
       video_files:    cs.type === 'series' ? (item.suggestion.video_files || []) : [],
       is_loose_file:  item.is_loose_file || false,
-      // Only set on the single item being replaced
-      replaced_path:  (replacedPath && selected.length === 1) ? replacedPath : null,
+      replaced_path:  replacedPathFor(item),
     };
   });
 

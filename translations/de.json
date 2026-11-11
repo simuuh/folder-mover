@@ -75,6 +75,8 @@
   "card.season_new": "Neue Staffel · Vorhanden: {seasons}",
   "card.duplicate": "⚠ Anderes Release bereits vorhanden:",
   "card.replace": "Altes ersetzen",
+  "card.replace_marked": "🗑 Wird nach dem Verschieben gelöscht:",
+  "card.replace_undo": "Nicht ersetzen",
   "card.delete": "Löschen",
   "card.delete_title": "Aus Download-Verzeichnis löschen",
   "card.skip": "Überspringen",
@@ -86,9 +88,6 @@
   "delete.failed": "Löschen fehlgeschlagen: {error}",
   "delete.done": "\"{name}\" gelöscht",
 
-  "replace.confirm_title": "Altes Release ersetzen?",
-  "replace.confirm_body": "Verschiebt:\n{new}\n\nund löscht danach das alte Release:\n{old}",
-  "replace.button": "Ersetzen",
 
   "action.rescan": "Neu scannen",
   "action.move": "Verschieben",
@@ -99,6 +98,8 @@
   "move.confirm_body": "{count} Einträge · {size}",
   "move.confirm_body_one": "{count} Eintrag · {size}",
   "move.confirm_incomplete": "⚠ {count} davon sind evtl. noch nicht fertig heruntergeladen.",
+  "move.confirm_replace": "🗑 Danach werden {count} alte Releases auf dem NAS gelöscht:",
+  "move.confirm_replace_one": "🗑 Danach wird {count} altes Release auf dem NAS gelöscht:",
   "move.irreversible": "Dies kann nicht rückgängig gemacht werden.",
   "move.button": "Verschieben",
   "move.error": "Fehler: {error}",
