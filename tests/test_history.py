@@ -1,5 +1,7 @@
 """history.jsonl: retention, server-side search/filter/paging."""
 
+import json
+
 import pytest
 from test_app import auth_client, client  # noqa: F401  (fixtures)
 
@@ -82,3 +84,36 @@ def test_api_ignores_bogus_params(auth_client, hist_file):  # noqa: F811
     _add("A.Movie")
     data = auth_client.get("/api/history?filter=nope&offset=-5&limit=abc").get_json()
     assert data["ok"] and data["matched"] == 1 and data["offset"] == 0
+
+
+def test_stats_totals_and_months(hist_file):
+    from datetime import UTC, datetime
+    lines = [
+        {"ts": "2026-11-03T10:00:00+00:00", "type": "movie", "ok": True, "size_bytes": 4_000},
+        {"ts": "2026-11-20T10:00:00+00:00", "type": "series", "ok": True, "size_bytes": 1_000},
+        {"ts": "2026-09-01T10:00:00+00:00", "type": "series", "ok": True, "size_bytes": 500},
+        {"ts": "2026-09-02T10:00:00+00:00", "type": "movie", "ok": False, "size_bytes": None},
+        {"ts": "2024-01-01T10:00:00+00:00", "type": "movie", "ok": True, "size_bytes": 7},   # outside the window
+    ]
+    hist_file.write_text("".join(json.dumps(e) + "\n" for e in lines), encoding="utf-8")
+
+    s = history.stats(months=3, now=datetime(2026, 11, 17, tzinfo=UTC))
+
+    assert {k: s[k] for k in ("moved", "failed", "bytes", "movies", "series")} == {
+        "moved": 4, "failed": 1, "bytes": 5_507, "movies": 2, "series": 2}
+    assert s["months"] == [{"month": "2026-09", "bytes": 500, "count": 1},
+                           {"month": "2026-10", "bytes": 0, "count": 0},
+                           {"month": "2026-11", "bytes": 5_000, "count": 2}]
+
+
+def test_stats_month_window_crosses_the_year(hist_file):
+    from datetime import UTC, datetime
+    s = history.stats(months=3, now=datetime(2026, 1, 5, tzinfo=UTC))
+    assert [m["month"] for m in s["months"]] == ["2025-11", "2025-12", "2026-01"]
+    assert s["moved"] == 0 and s["bytes"] == 0
+
+
+def test_stats_api(auth_client, hist_file):  # noqa: F811
+    _add("A.Movie")
+    data = auth_client.get("/api/history/stats").get_json()
+    assert data["ok"] and data["moved"] == 1 and len(data["months"]) == 12

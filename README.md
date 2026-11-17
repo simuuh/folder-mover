@@ -42,7 +42,7 @@ moves everything into place after **you** confirmed it. With a live progress bar
 | 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload; a running move can be cancelled (the unfinished copy is rolled back) |
 | 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; copies get their final name only when complete (`.fmpart` until then); optional mount marker against unmounted shares; all paths validated server-side |
 | 📺 **Jellyfin & Plex** | Optional library rescan after every move, so new releases show up right away |
-| 🗂️ **History** | Searchable log of every move, filterable by type and errors |
+| 🗂️ **History** | Searchable log of every move (server-side search over the whole history), filterable by type and errors, with stats and GB moved per month |
 | 🌗 **Dark & light** | Follows your OS theme, switchable in the header |
 
 ## ⚙️ How it works

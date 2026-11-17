@@ -628,6 +628,12 @@ def api_history():
                     "total": hist.count()})
 
 
+@app.route("/api/history/stats")
+@require_auth
+def api_history_stats():
+    return jsonify({"ok": True, **hist.stats()})
+
+
 def main():
     parser = argparse.ArgumentParser(description="Folder Mover web UI")
     parser.add_argument("--hash-password", action="store_true",

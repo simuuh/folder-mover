@@ -98,6 +98,41 @@ def query(search: str = "", type_filter: str = "all", offset: int = 0, limit: in
     return page, matched
 
 
+def _month_keys(months: int, now: datetime) -> list[str]:
+    """'YYYY-MM' of the last `months` months, oldest first, ending with `now`'s month."""
+    year, month = now.year, now.month
+    keys = []
+    for _ in range(months):
+        keys.append(f"{year:04d}-{month:02d}")
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    return keys[::-1]
+
+
+def stats(months: int = 12, now: datetime | None = None) -> dict:
+    """
+    Totals over the whole history plus moved bytes/entries per month for the
+    last `months` months (zero-filled, UTC). Only successful moves count as moved.
+    """
+    by_month = {key: {"month": key, "bytes": 0, "count": 0} for key in _month_keys(months, now or datetime.now(UTC))}
+    totals = {"moved": 0, "failed": 0, "bytes": 0, "movies": 0, "series": 0}
+    for entry in _entries_newest_first():
+        if not entry.get("ok"):
+            totals["failed"] += 1
+            continue
+        size = entry.get("size_bytes") if isinstance(entry.get("size_bytes"), int) else 0
+        totals["moved"] += 1
+        totals["bytes"] += size
+        if entry.get("type") == "movie":
+            totals["movies"] += 1
+        elif entry.get("type") == "series":
+            totals["series"] += 1
+        bucket = by_month.get(str(entry.get("ts") or "")[:7])
+        if bucket:
+            bucket["bytes"] += size
+            bucket["count"] += 1
+    return {**totals, "months": list(by_month.values())}
+
+
 def read(limit: int = 200) -> list[dict]:
     """Return the most recent `limit` entries, newest first."""
     return query(limit=limit)[0]
