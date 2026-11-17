@@ -41,6 +41,7 @@ moves everything into place after **you** confirmed it. With a live progress bar
 | 🐳 **Docker or bare metal** | Multi-arch image (amd64/arm64) or a systemd service |
 | 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload; a running move can be cancelled (the unfinished copy is rolled back) |
 | 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; copies get their final name only when complete (`.fmpart` until then); optional mount marker against unmounted shares; all paths validated server-side |
+| 📺 **Jellyfin & Plex** | Optional library rescan after every move, so new releases show up right away |
 | 🗂️ **History** | Searchable log of every move, filterable by type and errors |
 | 🌗 **Dark & light** | Follows your OS theme, switchable in the header |
 
@@ -196,6 +197,8 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `junk_patterns` | `*.url *.lnk rushchk.log …` | Glob patterns for junk files/folders in movie releases (hoster shortcuts, checker logs, …): not copied, deleted with the download. Replaces the defaults — see `config.yaml.example` |
 | `mount_marker` | – | File/folder that must exist in `movies_dir` **and** `series_dir` before anything is moved (e.g. `.folder-mover`) — protects against filling the empty mountpoint of an unmounted share |
 | `nas_timeout` | `30` | Seconds without an answer from a folder before Folder Mover reports "NAS not responding": scans/moves are refused, a running one is flagged as stalled (and logged). `0` = off |
+| `jellyfin.url` / `jellyfin.api_key` | – | Jellyfin rescans its library after every move with at least one success (API key: Dashboard → API Keys) |
+| `plex.url` / `plex.token` | – | Same for Plex (`X-Plex-Token`). Test the setup with `python app.py --refresh-library` |
 
 **Environment variables** override `config.yaml`:
 
@@ -205,6 +208,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `FOLDER_MOVER_USERNAME` / `_PASSWORD` / `_PASSWORD_HASH` | `auth.*` |
 | `FOLDER_MOVER_SECRET_KEY`, `FOLDER_MOVER_HOST`, `FOLDER_MOVER_PORT` | the matching keys |
 | `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER`, `FOLDER_MOVER_NAS_TIMEOUT` | the matching keys |
+| `FOLDER_MOVER_JELLYFIN_URL` / `_JELLYFIN_API_KEY`, `FOLDER_MOVER_PLEX_URL` / `_PLEX_TOKEN` | `jellyfin.*` / `plex.*` |
 | `FOLDER_MOVER_SESSION_DAYS`, `FOLDER_MOVER_PROXY_COUNT` | the matching keys |
 | `FOLDER_MOVER_CONFIG` | path of the config file |
 | `FOLDER_MOVER_HISTORY` | path of `history.jsonl` (the session secret is stored next to it) |
@@ -249,7 +253,6 @@ The frontend is plain HTML/CSS/JS in [`templates/`](templates) and [`static/`](s
 
 ## 🗺️ Roadmap
 
-- [ ] Jellyfin / Plex library refresh after a move
 - [ ] Notifications (ntfy, Gotify, Telegram) when downloads are waiting or a move finished
 - [ ] Auto-scan / watch mode for the download folder
 - [ ] TMDB lookup for clean `Title (Year)` folder names

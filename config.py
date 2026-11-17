@@ -41,6 +41,11 @@ DEFAULT_CONFIG = {
     # Mover reports "NAS not responding": scans and moves are refused, a running
     # one is flagged as stalled. A disk spinning up can take ~15 s. 0 = off.
     "nas_timeout": 30,
+    # Media servers whose library is rescanned after every move with at least
+    # one success (both optional; empty url = off). Jellyfin: Dashboard → API
+    # keys. Plex: X-Plex-Token of the server owner.
+    "jellyfin": {"url": "", "api_key": ""},
+    "plex": {"url": "", "token": ""},
     # Additional regexes for folder names that are pure wrappers (not the real
     # release). UUID folders are always treated as wrappers.
     "wrapper_patterns": [],
@@ -72,6 +77,10 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_LANGUAGE":      ("language",),
     "FOLDER_MOVER_MOUNT_MARKER":  ("mount_marker",),
     "FOLDER_MOVER_NAS_TIMEOUT":   ("nas_timeout",),
+    "FOLDER_MOVER_JELLYFIN_URL":     ("jellyfin", "url"),
+    "FOLDER_MOVER_JELLYFIN_API_KEY": ("jellyfin", "api_key"),
+    "FOLDER_MOVER_PLEX_URL":         ("plex", "url"),
+    "FOLDER_MOVER_PLEX_TOKEN":       ("plex", "token"),
     "FOLDER_MOVER_SECRET_KEY":    ("secret_key",),
     "FOLDER_MOVER_SESSION_DAYS":  ("session_days",),
     "FOLDER_MOVER_PROXY_COUNT":   ("proxy_count",),
@@ -91,7 +100,10 @@ def load_config(path: str | None = None) -> dict:
         )
 
     config = dict(DEFAULT_CONFIG)
-    config["auth"] = dict(DEFAULT_CONFIG["auth"])
+    # Nested sections are updated in place below — never mutate the defaults
+    for key, val in DEFAULT_CONFIG.items():
+        if isinstance(val, dict):
+            config[key] = dict(val)
 
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:

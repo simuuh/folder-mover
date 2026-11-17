@@ -27,7 +27,7 @@ echo "==> Installing Folder Mover to $APP_DIR (service user: $SERVICE_USER)"
 
 # ── Copy files ─────────────────────────────────────────────────────────────────
 mkdir -p "$APP_DIR"
-cp -r app.py config.py scanner.py mover.py history.py i18n.py nas.py gunicorn.conf.py \
+cp -r app.py config.py scanner.py mover.py history.py i18n.py mediaserver.py nas.py gunicorn.conf.py \
       requirements.txt config.yaml.example templates static translations "$APP_DIR/"
 
 # ── Config ────────────────────────────────────────────────────────────────────
