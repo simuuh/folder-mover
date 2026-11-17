@@ -25,7 +25,7 @@ from mover import execute_moves, get_progress, mark_failed, mark_pending, reques
 from nas import StallWatch, disk_space, nas_timeout, unresponsive_dirs
 from scanner import scan_downloads
 
-__version__ = "1.5.1"
+__version__ = "1.6.0"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
