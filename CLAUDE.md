@@ -51,6 +51,9 @@ app.py validiert JEDEN Move serverseitig (_validate_move, inkl. replaced_path) u
    │   nur mit der Quelle gelöscht.
    │   Serien: nur Videos (ohne Samples) + passende Untertitel; Rest wird aufgeräumt.
    │   Erst nach Erfolg: replaced_path (altes NAS-Release bei "Ersetzen") löschen.
+   │   POST /api/move/cancel → mover.request_cancel(): geprüft zwischen zwei Chunks
+   │   (_check_cancel in den Copy-Callbacks). Halber Film → Rollback wie bei Fehlern,
+   │   bereits kopierte Episoden bleiben, restliche Einträge "skipped" (nicht in History).
    ▼
 GET /api/progress (Server-Sent Events, Poll alle 0.25s) → Live-Fortschrittsbalken
    │

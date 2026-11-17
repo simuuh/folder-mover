@@ -39,7 +39,7 @@ moves everything into place after **you** confirmed it. With a live progress bar
 | 🎞️ **Episodes, not junk** | Series moves take the episodes and their subtitles (`.srt`, `.ass`, …) — samples and `.nfo` files are left behind and cleaned up |
 | ⚡ **Instant moves** | Same filesystem? Then it's a rename, not a copy |
 | 🐳 **Docker or bare metal** | Multi-arch image (amd64/arm64) or a systemd service |
-| 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload |
+| 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload; a running move can be cancelled (the unfinished copy is rolled back) |
 | 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; copies get their final name only when complete (`.fmpart` until then); optional mount marker against unmounted shares; all paths validated server-side |
 | 🗂️ **History** | Searchable log of every move, filterable by type and errors |
 | 🌗 **Dark & light** | Follows your OS theme, switchable in the header |
@@ -252,7 +252,6 @@ The frontend is plain HTML/CSS/JS in [`templates/`](templates) and [`static/`](s
 - [ ] Jellyfin / Plex library refresh after a move
 - [ ] Notifications (ntfy, Gotify, Telegram) when downloads are waiting or a move finished
 - [ ] Auto-scan / watch mode for the download folder
-- [ ] Cancel a running move
 - [ ] TMDB lookup for clean `Title (Year)` folder names
 - [ ] Optional episode renaming & folder-per-movie for loose files
 

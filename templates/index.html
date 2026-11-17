@@ -469,7 +469,7 @@
   .prog-current-item { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prog-errors { font-size: 12px; color: var(--red); font-family: var(--mono); max-height: 80px; overflow-y: auto; white-space: pre-line; }
   .prog-stalled { font-size: 12px; color: var(--orange); }
-  #prog-close-btn { width: 100%; justify-content: center; margin-top: 4px; }
+  #prog-close-btn, #prog-cancel-btn { width: 100%; justify-content: center; margin-top: 4px; }
 
   /* ── Select all ── */
   .toolbar {
@@ -873,6 +873,9 @@
     <div class="prog-stalled" id="prog-stalled" role="status" hidden></div>
     <div class="prog-errors" id="prog-errors" hidden></div>
 
+    <button class="btn btn-danger" id="prog-cancel-btn" onclick="cancelMove()" title="{{ t('progress.cancel_title') }}">
+      <span id="prog-cancel-label">{{ t('progress.cancel') }}</span>
+    </button>
     <button class="btn btn-primary" id="prog-close-btn" onclick="closeProgressOverlay()" hidden>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
       {{ t('progress.close') }}
@@ -1669,11 +1672,31 @@ function updateProgressUI(p) {
     el.textContent = p.errors.map(e => (typeof e === 'string' ? e : errorText(e))).join('\n');
   }
 
+  const cancelBtn = document.getElementById('prog-cancel-btn');
+  if (p.cancel_requested && !p.finished) {
+    cancelBtn.disabled = true;
+    document.getElementById('prog-cancel-label').textContent = t('progress.cancelling');
+  }
+
   if (p.finished) {
-    document.getElementById('prog-title').textContent = t('progress.done');
-    document.getElementById('prog-current-item').textContent = t('progress.finished');
+    document.getElementById('prog-title').textContent = t(p.cancelled ? 'progress.cancelled' : 'progress.done');
+    document.getElementById('prog-current-item').textContent =
+      t(p.cancelled ? 'progress.cancelled' : 'progress.finished');
     document.querySelector('#progress-overlay .spinner').hidden = true;
+    cancelBtn.hidden = true;
     document.getElementById('prog-close-btn').hidden = false;
+  }
+}
+
+async function cancelMove() {
+  const btn = document.getElementById('prog-cancel-btn');
+  btn.disabled = true;
+  document.getElementById('prog-cancel-label').textContent = t('progress.cancelling');
+  try {
+    await api('/api/move/cancel', {});
+  } catch (e) {
+    // e.g. the move finished in the meantime — the progress stream reports that anyway
+    toast(t('move.error', { error: e.message }), 'error', 6000);
   }
 }
 
@@ -1681,6 +1704,10 @@ function closeProgressOverlay() {
   document.getElementById('progress-overlay').classList.remove('active');
   // Reset for next use
   document.getElementById('prog-close-btn').hidden = true;
+  const cancelBtn = document.getElementById('prog-cancel-btn');
+  cancelBtn.hidden = false;
+  cancelBtn.disabled = false;
+  document.getElementById('prog-cancel-label').textContent = t('progress.cancel');
   document.getElementById('prog-title').textContent = t('progress.title');
   document.querySelector('#progress-overlay .spinner').hidden = false;
   document.getElementById('prog-overall-bar').classList.remove('done');
@@ -1691,13 +1718,15 @@ function closeProgressOverlay() {
 
 function finishMove(results) {
   // Overlay stays open — user clicks "close"
-  const ok     = results.filter(r => r.ok).length;
-  const failed = results.filter(r => !r.ok);
+  const ok        = results.filter(r => r.ok).length;
+  const cancelled = results.filter(r => r.cancelled).length;
+  const failed    = results.filter(r => !r.ok && !r.cancelled);
 
   _selectedForMove.forEach((item, idx) => {
     const res  = results[idx];
     const card = getCard(item._k);
     if (!card) return;
+    if (res && res.cancelled) return;   // untouched (or rolled back) — one summary toast below
     if (res && res.ok) {
       card.classList.remove('selected', 'expanded', 'skipped');
       card.classList.add('done');
@@ -1713,6 +1742,7 @@ function finishMove(results) {
 
   if (ok > 0) toast(t('move.success', { count: ok }), 'success');
   if (failed.length > 0) toast(t('move.failed_count', { count: failed.length }), 'error');
+  if (cancelled > 0) toast(t('move.cancelled', { count: cancelled }), 'warn', 8000);
 
   updateSelectionInfo();
   loadHistory(true);

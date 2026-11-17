@@ -19,6 +19,8 @@ def append(moves: list[dict], results: list[dict]):
     """
     entries = []
     for move, result in zip(moves, results, strict=False):
+        if result.get("skipped"):
+            continue   # never started (move cancelled before it) — nothing happened
         entry = {
             "ts":            datetime.now(UTC).isoformat(),
             "release_name":  Path(move.get("source_release", "")).name,

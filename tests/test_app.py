@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 
 import pytest
@@ -403,3 +404,44 @@ def test_delete_is_refused_while_moving(auth_client, dirs, monkeypatch, endpoint
     resp = auth_client.post(endpoint, json={"path": str(dirs["download_dir"] / "Junk")})
     assert resp.status_code == 409 and resp.get_json()["error_key"] == "api.move_running"
     assert (dirs["download_dir"] / "Junk" / "a.mkv").exists()
+
+
+def test_cancel_without_move_is_refused(auth_client):
+    resp = auth_client.post("/api/move/cancel", json={})
+    assert resp.status_code == 409 and resp.get_json()["error_key"] == "api.no_move_running"
+
+
+def test_cancel_running_move(auth_client, dirs, monkeypatch):
+    import mover
+    real_copy = mover._copy_with_progress
+    copying = threading.Event()
+
+    def slow_copy(src, dst, cb):
+        def wait_for_cancel(*args):
+            copying.set()
+            deadline = time.monotonic() + 5
+            while not mover._cancel.is_set() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            cb(*args)
+        real_copy(src, dst, wait_for_cancel)
+
+    monkeypatch.setattr(mover, "_copy_with_progress", slow_copy)
+    monkeypatch.setattr(mover, "_try_rename", lambda src, dst: False)
+    make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/movie.mkv")
+    other = _move(dirs, source_release=str(dirs["download_dir"] / "Other.2021.1080p.WEB-GRP"),
+                  source_top=str(dirs["download_dir"] / "Other.2021.1080p.WEB-GRP"),
+                  dest_dir=str(dirs["movies_dir"] / "O" / "Other.2021.1080p.WEB-GRP"))
+    make_files(dirs["download_dir"], "Other.2021.1080p.WEB-GRP/movie.mkv")
+    assert auth_client.post("/api/move", json={"moves": [_move(dirs), other]}).get_json()["ok"]
+
+    assert copying.wait(5)
+    assert auth_client.post("/api/move/cancel", json={}).get_json()["ok"]
+    body = auth_client.get("/api/progress").get_data(as_text=True)
+    final = json.loads([line for line in body.splitlines() if line.startswith("data:")][-1][5:])
+
+    assert [r["cancelled"] for r in final["results"]] == [True, True]
+    assert (dirs["download_dir"] / "Movie.2022.German.1080p.WEB-GRP" / "movie.mkv").exists()
+    assert not (dirs["movies_dir"] / "M" / "Movie.2022.German.1080p.WEB-GRP").exists()
+    # Only the item that had started is in the history; the skipped one never happened
+    entries = auth_client.get("/api/history").get_json()["entries"]
+    assert len(entries) == 1 and entries[0]["error_i18n"][0]["key"] == "mover.cancelled"
