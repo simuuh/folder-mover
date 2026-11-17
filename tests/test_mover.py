@@ -451,3 +451,66 @@ def test_loose_episode_does_not_take_unrelated_subtitles(config, dirs):
     assert sorted(p.name for p in (dirs["series_dir"] / "Show" / "S01").iterdir()) == [
         "Show.S01E01.de.srt", "Show.S01E01.mkv"]
     assert (dirs["download_dir"] / "Other.Movie.srt").exists()
+
+
+def _cancel_during_copy(monkeypatch, when=lambda src: True):
+    """Request a cancel from inside the copy of the first file matching `when`."""
+    real_copy = mover._copy_with_progress
+
+    def copy(src, dst, cb):
+        def cb_then_cancel(*args):
+            if when(src):
+                assert mover.request_cancel()
+            cb(*args)
+        real_copy(src, dst, cb_then_cancel)
+
+    monkeypatch.setattr(mover, "_copy_with_progress", copy)
+
+
+def test_cancel_rolls_back_movie_and_skips_the_rest(config, dirs, monkeypatch):
+    rels = ["Movie.A.2022.German.1080p.WEB-GRP", "Movie.B.2022.German.1080p.WEB-GRP"]
+    for rel in rels:
+        make_files(dirs["download_dir"], f"{rel}/movie.mkv", f"{rel}/info.nfo")
+    _cancel_during_copy(monkeypatch)
+    mover.mark_pending(2)
+
+    results = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dirs["movies_dir"] / "M" / rel), "type": "movie",
+    } for rel in rels], config)
+
+    assert [r["cancelled"] for r in results] == [True, True]
+    assert results[0]["error_i18n"][0]["key"] == "mover.cancelled" and not results[0].get("skipped")
+    assert results[1]["skipped"]
+    assert not (dirs["movies_dir"] / "M").exists() or not any((dirs["movies_dir"] / "M").iterdir())
+    for rel in rels:   # sources untouched
+        assert (dirs["download_dir"] / rel / "movie.mkv").exists()
+        assert (dirs["download_dir"] / rel / "info.nfo").exists()
+    progress = mover.get_progress()
+    assert progress["finished"] and progress["cancelled"] and progress["errors"] == []
+    assert not mover._cancel.is_set()   # the next move starts clean
+
+
+def test_cancel_keeps_episodes_already_moved(config, dirs, monkeypatch):
+    rel = "Show.S01.German.1080p.WEB-GRP"
+    make_files(dirs["download_dir"], f"{rel}/e01.mkv", f"{rel}/e02.mkv")
+    _cancel_during_copy(monkeypatch, when=lambda src: src.name == "e02.mkv")
+    dest = dirs["series_dir"] / "Show" / "S01"
+    mover.mark_pending(1)
+
+    result = mover.execute_moves([{
+        "source_release": str(dirs["download_dir"] / rel), "source_top": str(dirs["download_dir"] / rel),
+        "dest_dir": str(dest), "type": "series", "video_files": ["e01.mkv", "e02.mkv"],
+    }], config)[0]
+
+    assert result["cancelled"] and not result["ok"]
+    assert result["error_i18n"][0] == {"key": "mover.cancelled_partial", "args": {"count": 1}}
+    assert result["moved_files"] == [str(dest / "e01.mkv")]
+    assert sorted(p.name for p in dest.iterdir()) == ["e01.mkv"]   # no e02, no .fmpart
+    assert (dirs["download_dir"] / rel / "e02.mkv").exists()
+
+
+def test_cancel_without_running_move_is_refused():
+    mover.reset_progress()
+    assert not mover.request_cancel()
+    assert not mover._cancel.is_set()

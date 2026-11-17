@@ -20,7 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import history as hist
 import i18n
 from config import DEFAULT_PASSWORD, check_config, dir_overlaps, library_warnings, load_config, missing_mount_markers
-from mover import execute_moves, get_progress, mark_failed, mark_pending
+from mover import execute_moves, get_progress, mark_failed, mark_pending, request_cancel
 from nas import StallWatch, nas_timeout, unresponsive_dirs
 from scanner import scan_downloads
 
@@ -495,6 +495,19 @@ def api_move():
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"ok": True, "message": "Move started"})
+
+
+@app.route("/api/move/cancel", methods=["POST"])
+@require_auth
+def api_move_cancel():
+    # Only a request: the mover stops after its current chunk and rolls back
+    # what is unfinished — the progress stream reports the end as usual
+    with _move_lock:
+        moving = _move_running
+    if not moving or not request_cancel():
+        return api_error("api.no_move_running", 409)
+    log.info("Cancel of the running move requested")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/progress")

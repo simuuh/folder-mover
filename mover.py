@@ -23,6 +23,7 @@ FSYNC_EVERY_BYTES = 64 * 1024 * 1024  # fsync at most every 64 MB (not every chu
 # ── Global progress state (single-user tool) ──────────────────────────────────
 _progress_lock = threading.Lock()
 _progress: dict = {}
+_cancel = threading.Event()   # set by request_cancel(), checked between copy chunks
 
 
 def get_progress() -> dict:
@@ -80,6 +81,38 @@ class _SourceChanged(Exception):
     """The source release changed while it was being copied."""
 
 
+class _Cancelled(Exception):
+    """The user cancelled the move (raised between two copy chunks)."""
+
+
+def request_cancel() -> bool:
+    """
+    Ask the running move to stop. The current copy ends after its next chunk:
+    a half-copied movie is rolled back, episodes already on the NAS stay,
+    remaining items are skipped. A copy blocked on a hanging NAS only notices
+    once that write returns. Returns False if no move is running.
+    """
+    with _progress_lock:
+        if not _progress.get("active"):
+            return False
+        _cancel.set()
+        _progress["cancel_requested"] = True
+    return True
+
+
+def _check_cancel():
+    if _cancel.is_set():
+        raise _Cancelled
+
+
+def _cancelled_result(source_release, moved: list[str] | None = None) -> dict:
+    if moved:
+        err = _err("mover.cancelled_partial",
+                   f"Cancelled — {len(moved)} file(s) had already been moved", count=len(moved))
+        return {**_fail(source_release, err), "cancelled": True, "moved_files": moved}
+    return {**_fail(source_release, _err("mover.cancelled", "Cancelled — not moved")), "cancelled": True}
+
+
 def _fail(source_release, *errors: dict) -> dict:
     return {"source_release": str(source_release), "ok": False,
             "error": "; ".join(e["text"] for e in errors),
@@ -93,10 +126,11 @@ def _progress_error(result: dict) -> dict:
 
 def mark_pending(total_items: int):
     """Mark a move as started before the worker thread is up (avoids SSE races)."""
+    _cancel.clear()
     with _progress_lock:
         _progress.clear()
         _progress.update(active=True, finished=False, total_items=total_items,
-                         done_items=0, total_bytes=0, copied_bytes=0, errors=[])
+                         done_items=0, total_bytes=0, copied_bytes=0, errors=[], cancel_requested=False)
 
 
 def mark_failed(error: str):
@@ -144,6 +178,7 @@ def _execute_moves(moves: list[dict], config: dict, on_done, watch: StallWatch) 
         eta_seconds=None,
         errors=[],
         stalled_seconds=0,
+        cancelled=False,
         finished=False,
     )
 
@@ -151,6 +186,11 @@ def _execute_moves(moves: list[dict], config: dict, on_done, watch: StallWatch) 
     tracker = _SpeedTracker()
 
     for idx, move in enumerate(moves):
+        if _cancel.is_set():
+            # Not started → nothing to roll back; not listed as an error in the
+            # progress dialog (it says "cancelled" once) and not in the history
+            results.append({**_cancelled_result(move.get("source_release")), "skipped": True})
+            continue
         release_name = Path(move["source_release"]).name
         _set(current_item=release_name, done_items=idx)
         watch.touch()
@@ -175,7 +215,7 @@ def _execute_moves(moves: list[dict], config: dict, on_done, watch: StallWatch) 
             if result["ok"] and move.get("replaced_path"):
                 _replace_old_release(move["replaced_path"], result)
             results.append(result)
-            if not result["ok"]:
+            if not result["ok"] and not result.get("cancelled"):
                 with _progress_lock:
                     _progress["errors"].append(_progress_error(result))
 
@@ -192,16 +232,23 @@ def _execute_moves(moves: list[dict], config: dict, on_done, watch: StallWatch) 
         except Exception:
             log.exception("on_done callback failed")
 
+    cancelled = any(r.get("cancelled") for r in results)
+    if cancelled:
+        log.info("Move cancelled by the user after %d of %d item(s)",
+                 sum(1 for r in results if r["ok"]), len(moves))
     _set(
         active=False,
         finished=True,
+        cancelled=cancelled,
         done_items=len(moves),
-        copied_bytes=total_bytes,
+        # A cancelled move keeps the real numbers instead of jumping to 100 %
+        copied_bytes=copied_bytes if cancelled else total_bytes,
         current_file="",
         current_item="",
         speed_bps=0,
         eta_seconds=0,
     )
+    _cancel.clear()   # a late click must not cancel the next move
     return results
 
 
@@ -288,9 +335,16 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
             def _cb(fname, ic, it, chunk, _off=offset):
                 on_chunk(fname, _off + ic, item_total, chunk)
+                _check_cancel()   # between two chunks; the copy removes its .fmpart
 
             try:
+                _check_cancel()
                 _copy_with_progress(src_file, dst_file, _cb)
+            except _Cancelled:
+                # The half-copied episode is gone (.fmpart removed), the source is untouched
+                log.info("Series move cancelled at %s", rel_path)
+                _cleanup_after_series_move(source_top, source_release, config)
+                return {**_cancelled_result(source_release, moved), "size_bytes": item_copied}
             except OSError as e:
                 # Episodes moved so far stay moved; report which one failed and stop
                 log.warning("Copy failed: %s → %s: %s", src_file, dst_file, e)
@@ -365,8 +419,10 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
                 def _cb(fname, ic, it, chunk, _off=offset):
                     on_chunk(fname, _off + ic, item_total, chunk)
+                    _check_cancel()   # between two chunks; the copy removes its .fmpart
 
                 log.info("Copying: %s → %s", fsrc, fdst)
+                _check_cancel()
                 _copy_with_progress(fsrc, fdst, _cb)
                 item_copied += fsrc.stat().st_size
             if _snapshot(src) != snapshot:
@@ -387,6 +443,9 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
             if isinstance(e, _SourceChanged):
                 return _fail(source_release, _err(
                     "mover.source_changed", "Download is still being written (files changed during the copy)"))
+            if isinstance(e, _Cancelled):
+                log.info("Movie move cancelled, rolled back: %s", source_release)
+                return _cancelled_result(source_release)
             raise
 
         # Delete only what was copied (or skipped as junk); files that appeared meanwhile stay
@@ -415,6 +474,8 @@ def _partial_path(dst: Path) -> Path:
 def _copy_with_progress(src: Path, dst: Path, callback: Callable):
     """
     Copy src → dst in 4 MB chunks, firing callback per chunk after actual write.
+    An exception from the callback (e.g. _Cancelled) aborts the copy and
+    removes the .fmpart file like any other error.
 
     The data is written to "<dst>.fmpart" and only renamed to `dst` once it is
     complete and synced. If the process dies mid-copy (SIGKILL, OOM, power
