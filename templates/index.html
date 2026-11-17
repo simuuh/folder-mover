@@ -616,6 +616,36 @@
     max-width: 300px;
   }
   .hist-refresh { margin-left: auto; }
+  /* ── History stats: tiles + GB per month ── */
+  .hist-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 760px) { .hist-stats { grid-template-columns: minmax(0, 1fr); } }
+  .hist-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; align-content: start; }
+  .hist-tile, .hist-chart {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
+  }
+  .hist-tile { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; min-width: 0; }
+  .hist-tile-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .hist-tile-value {
+    font-size: clamp(16px, 4.2vw, 20px); font-weight: 600; color: var(--heading);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .hist-chart { position: relative; padding: 12px 14px; }
+  .hist-chart-title { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .hist-bars { display: flex; gap: 2px; height: 130px; }
+  .hist-bar-col { flex: 1; display: flex; flex-direction: column; min-width: 0; outline: none; }
+  .hist-bar-area { flex: 1; display: flex; align-items: flex-end; padding: 0 18%; border-bottom: 1px solid var(--border); }
+  .hist-bar { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; }
+  .hist-bar-col:hover .hist-bar, .hist-bar-col:focus-visible .hist-bar { background: var(--accent-hover); }
+  .hist-bar-col:focus-visible .hist-bar-area { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .hist-bar-label {
+    font-size: 10px; color: var(--muted); text-align: center; margin-top: 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: clip;
+  }
+  .hist-tooltip {
+    position: absolute; z-index: 2; pointer-events: none; transform: translate(-50%, -100%);
+    padding: 6px 9px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 12px; white-space: nowrap; box-shadow: var(--shadow);
+  }
   .hist-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
   .hist-count { font-size: 12px; color: var(--muted); }
 
@@ -761,6 +791,20 @@
 
   <!-- History tab -->
   <div id="tab-history" hidden>
+    <section class="hist-stats" id="hist-stats" aria-label="{{ t('history.stats_label') }}" hidden>
+      <div class="hist-tiles">
+        <div class="hist-tile"><span class="hist-tile-label">{{ t('history.stats_moved') }}</span><span class="hist-tile-value" id="hs-moved"></span></div>
+        <div class="hist-tile"><span class="hist-tile-label">{{ t('history.stats_data') }}</span><span class="hist-tile-value" id="hs-bytes"></span></div>
+        <div class="hist-tile"><span class="hist-tile-label">{{ t('history.stats_movies') }}</span><span class="hist-tile-value" id="hs-movies"></span></div>
+        <div class="hist-tile"><span class="hist-tile-label">{{ t('history.stats_series') }}</span><span class="hist-tile-value" id="hs-series"></span></div>
+        <div class="hist-tile"><span class="hist-tile-label">{{ t('history.stats_errors') }}</span><span class="hist-tile-value" id="hs-errors"></span></div>
+      </div>
+      <div class="hist-chart">
+        <div class="hist-chart-title">{{ t('history.stats_chart_title') }}</div>
+        <div class="hist-bars" id="hist-bars" role="list"></div>
+        <div class="hist-tooltip" id="hist-tooltip" role="tooltip" hidden></div>
+      </div>
+    </section>
     <div class="hist-toolbar">
       <div class="hist-filter">
         <button class="hist-filter-btn active" onclick="setHistFilter('all', this)">{{ t('history.filter_all') }}</button>
@@ -1811,6 +1855,7 @@ let _histRequest = 0;       // drops answers of outdated requests (fast typing)
 let _histSearchTimer = null;
 
 async function loadHistory(silent = false, more = false) {
+  if (!more) loadHistoryStats();
   const request = ++_histRequest;
   const params = new URLSearchParams({
     q: document.getElementById('hist-search').value || '',
@@ -1830,6 +1875,75 @@ async function loadHistory(silent = false, more = false) {
     if (!silent) toast(t('history.load_failed', { error: e.message }), 'error');
   }
 }
+
+// ── History stats ──
+let _histMonths = [];
+
+async function loadHistoryStats() {
+  let s;
+  try { s = await api('/api/history/stats'); } catch { return; }   // the table reports load errors
+  const section = document.getElementById('hist-stats');
+  section.hidden = !(s.moved + s.failed);
+  if (section.hidden) return;
+
+  document.getElementById('hs-moved').textContent  = s.moved;
+  document.getElementById('hs-bytes').textContent  = fmtSize(s.bytes);
+  document.getElementById('hs-movies').textContent = s.movies;
+  document.getElementById('hs-series').textContent = s.series;
+  document.getElementById('hs-errors').textContent = Math.round(s.failed / (s.moved + s.failed) * 100) + ' %';
+
+  // Single series (GB per month): one hue, no legend — the title names it
+  _histMonths = s.months;
+  const max = Math.max(...s.months.map(m => m.bytes), 1);
+  document.getElementById('hist-bars').innerHTML = s.months.map((m, i) => {
+    const pct = m.bytes > 0 ? Math.max(2, m.bytes / max * 100) : 0;
+    const label = escHtml(histBarText(m));
+    return `<div class="hist-bar-col" role="listitem" tabindex="0" data-i="${i}" aria-label="${label}">
+      <div class="hist-bar-area"><div class="hist-bar" style="height:${pct}%"></div></div>
+      <span class="hist-bar-label">${escHtml(monthLabel(m.month, { month: 'short' }))}</span>
+    </div>`;
+  }).join('');
+}
+
+function monthLabel(key, opts) {
+  const [y, m] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(document.documentElement.lang || undefined,
+    { ...opts, timeZone: 'UTC' });
+}
+
+function histBarText(m) {
+  return t('history.stats_bar', {
+    month: monthLabel(m.month, { month: 'long', year: 'numeric' }),
+    size: m.bytes ? fmtSize(m.bytes) : '0 B',
+    count: m.count,
+  });
+}
+
+// Tooltip for the whole column (bigger hit target than the bar), mouse and keyboard
+function showHistTooltip(col) {
+  const tip = document.getElementById('hist-tooltip');
+  const chart = col.closest('.hist-chart');
+  const area = col.querySelector('.hist-bar-area');
+  const bar = col.querySelector('.hist-bar');
+  tip.textContent = histBarText(_histMonths[col.dataset.i]);
+  tip.hidden = false;
+  const c = chart.getBoundingClientRect();
+  // Above the bar, or above the baseline for an empty month
+  const y = bar.offsetHeight ? bar.getBoundingClientRect().top : area.getBoundingClientRect().bottom;
+  const half = tip.offsetWidth / 2;
+  const x = Math.min(Math.max(col.getBoundingClientRect().left + col.offsetWidth / 2 - c.left, half), c.width - half);
+  tip.style.left = x + 'px';
+  tip.style.top = (y - c.top - 6) + 'px';
+}
+
+function hideHistTooltip() { document.getElementById('hist-tooltip').hidden = true; }
+
+['mouseover', 'focusin'].forEach(type => document.getElementById('hist-bars').addEventListener(type, e => {
+  const col = e.target.closest('.hist-bar-col');
+  if (col) showHistTooltip(col);
+}));
+['mouseleave', 'focusout'].forEach(type =>
+  document.getElementById('hist-bars').addEventListener(type, hideHistTooltip));
 
 function searchHistory() {
   clearTimeout(_histSearchTimer);
