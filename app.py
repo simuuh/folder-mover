@@ -19,6 +19,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import history as hist
 import i18n
+import mediaserver
 from config import DEFAULT_PASSWORD, check_config, dir_overlaps, library_warnings, load_config, missing_mount_markers
 from mover import execute_moves, get_progress, mark_failed, mark_pending, request_cancel
 from nas import StallWatch, nas_timeout, unresponsive_dirs
@@ -85,6 +86,8 @@ if not password_configured():
               "(python app.py --hash-password) or FOLDER_MOVER_PASSWORD_HASH is set.", DEFAULT_PASSWORD)
 for _problem in check_config(config):
     log.warning("Config: %s", _problem)
+if mediaserver.configured(config):
+    log.info("Library refresh after moves: %s", ", ".join(mediaserver.configured(config)))
 if not os.access(hist.HISTORY_FILE.parent, os.W_OK):
     log.error("Data directory %s is not writable (uid %s) — history and session secret cannot be saved. "
               "Fix the folder owner (Docker: set PUID/PGID).", hist.HISTORY_FILE.parent,
@@ -481,6 +484,8 @@ def api_move():
         with _move_lock:
             _move_results.extend(results)
         hist.append(moves, results)
+        if any(r.get("ok") for r in results):
+            mediaserver.refresh_in_background(config)   # Jellyfin/Plex; best effort, never blocks
 
     def run():
         global _move_running
@@ -619,7 +624,17 @@ def main():
     parser = argparse.ArgumentParser(description="Folder Mover web UI")
     parser.add_argument("--hash-password", action="store_true",
                         help="print a password hash for auth.password_hash and exit")
+    parser.add_argument("--refresh-library", action="store_true",
+                        help="trigger the Jellyfin/Plex library refresh once (tests the setup) and exit")
     args = parser.parse_args()
+
+    if args.refresh_library:
+        outcome = mediaserver.refresh(config)
+        if not outcome:
+            raise SystemExit("No media server configured (jellyfin.url + api_key / plex.url + token).")
+        for name, error in outcome.items():
+            print(f"{name}: {'OK' if error is None else 'FAILED – ' + error}")
+        raise SystemExit(1 if any(outcome.values()) else 0)
 
     if args.hash_password:
         pw = getpass.getpass("Passwort: ")

@@ -18,6 +18,19 @@ mount_marker: ""
 # spins up can take ~15 s, so don't go too low. 0 = off.
 nas_timeout: 30
 
+# ── Media servers (optional) ───────────────────────────────────────────────────
+# After every move with at least one success, the whole library is rescanned
+# (in the background; errors only end up in the log). Test the setup with
+#   python app.py --refresh-library
+# Jellyfin: Dashboard → API Keys. Plex: X-Plex-Token of the server owner.
+# Use the URL as seen from Folder Mover (in Docker e.g. http://jellyfin:8096).
+jellyfin:
+  url: ""        # e.g. http://192.168.1.10:8096
+  api_key: ""
+plex:
+  url: ""        # e.g. http://192.168.1.10:32400
+  token: ""
+
 # ── Web Server ─────────────────────────────────────────────────────────────────
 host: 0.0.0.0
 port: 8080
