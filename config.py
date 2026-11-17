@@ -41,6 +41,8 @@ DEFAULT_CONFIG = {
     # Mover reports "NAS not responding": scans and moves are refused, a running
     # one is flagged as stalled. A disk spinning up can take ~15 s. 0 = off.
     "nas_timeout": 30,
+    # Number of move entries kept in history.jsonl (oldest are dropped). 0 = unlimited.
+    "history_max": 10000,
     # Media servers whose library is rescanned after every move with at least
     # one success (both optional; empty url = off). Jellyfin: Dashboard → API
     # keys. Plex: X-Plex-Token of the server owner.
@@ -77,6 +79,7 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_LANGUAGE":      ("language",),
     "FOLDER_MOVER_MOUNT_MARKER":  ("mount_marker",),
     "FOLDER_MOVER_NAS_TIMEOUT":   ("nas_timeout",),
+    "FOLDER_MOVER_HISTORY_MAX":   ("history_max",),
     "FOLDER_MOVER_JELLYFIN_URL":     ("jellyfin", "url"),
     "FOLDER_MOVER_JELLYFIN_API_KEY": ("jellyfin", "api_key"),
     "FOLDER_MOVER_PLEX_URL":         ("plex", "url"),
@@ -90,7 +93,7 @@ ENV_OVERRIDES = {
 }
 
 
-INT_KEYS = {"port", "session_days", "proxy_count", "nas_timeout"}
+INT_KEYS = {"port", "session_days", "proxy_count", "nas_timeout", "history_max"}
 
 
 def load_config(path: str | None = None) -> dict:

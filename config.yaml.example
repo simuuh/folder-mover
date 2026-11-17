@@ -18,6 +18,9 @@ mount_marker: ""
 # spins up can take ~15 s, so don't go too low. 0 = off.
 nas_timeout: 30
 
+# Number of moves kept in the history (oldest are dropped). 0 = unlimited.
+history_max: 10000
+
 # ── Media servers (optional) ───────────────────────────────────────────────────
 # After every move with at least one success, the whole library is rescanned
 # (in the background; errors only end up in the log). Test the setup with

@@ -112,9 +112,9 @@ def test_history_written_before_move_reports_finished(auth_client, dirs, monkeyp
     # "finished" — so the history must already be written at that point.
     real_append = history.append
 
-    def slow_append(*args):
+    def slow_append(*args, **kwargs):
         time.sleep(0.5)
-        real_append(*args)
+        real_append(*args, **kwargs)
 
     monkeypatch.setattr(app_module.hist, "append", slow_append)
     make_files(dirs["download_dir"], "Movie.2022.German.1080p.WEB-GRP/movie.mkv")
