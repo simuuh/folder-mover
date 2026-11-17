@@ -616,6 +616,21 @@
     max-width: 300px;
   }
   .hist-refresh { margin-left: auto; }
+  /* ── Free space of the media folders ── */
+  .space-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .space-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; box-shadow: var(--shadow); min-width: 0;
+  }
+  .space-head { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; margin-bottom: 7px; }
+  .space-label { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .space-free { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .space-track { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+  .space-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+  .space-item.low { border-color: var(--orange); }
+  .space-item.low .space-fill { background: var(--orange); }
+  .space-note { margin-top: 6px; font-size: 12px; color: var(--orange); }
+
   /* ── History stats: tiles + GB per month ── */
   .hist-stats { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; margin-bottom: 20px; }
   @media (max-width: 760px) { .hist-stats { grid-template-columns: minmax(0, 1fr); } }
@@ -772,6 +787,7 @@
 
   <!-- Downloads tab -->
   <div id="tab-scan">
+    <section class="space-row" id="space-row" aria-label="{{ t('space.label') }}" hidden></section>
     <div id="state-empty" class="state-empty">
       <div class="icon">📂</div>
       <p>{{ t('scan.empty') }}</p>
@@ -1796,6 +1812,7 @@ function finishMove(results) {
 
   updateSelectionInfo();
   loadHistory(true);
+  loadSpace();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1804,7 +1821,41 @@ function fmtSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 ** 2) return (bytes / 1024).toFixed(1) + ' KB';
   if (bytes < 1024 ** 3) return (bytes / 1024 ** 2).toFixed(1) + ' MB';
-  return (bytes / 1024 ** 3).toFixed(2) + ' GB';
+  if (bytes < 1024 ** 4) return (bytes / 1024 ** 3).toFixed(2) + ' GB';
+  return (bytes / 1024 ** 4).toFixed(2) + ' TB';
+}
+
+// ── Free space of the media folders ───────────────────────────────────────────
+const SPACE_LABEL = {
+  movies_dir: t('space.movies'),
+  series_dir: t('space.series'),
+};
+
+async function loadSpace() {
+  let data;
+  try { data = await api('/api/space'); } catch { return; }   // nice to have — never an error toast
+  const row = document.getElementById('space-row');
+  row.hidden = !data.targets.length;
+  row.innerHTML = data.targets.map(s => {
+    const label = s.keys.length > 1 ? t('space.both') : SPACE_LABEL[s.keys[0]];
+    let body;
+    if (s.unresponsive || s.missing) {
+      body = `<div class="space-note">⚠ ${escHtml(t(s.unresponsive ? 'space.unresponsive' : 'space.missing'))}</div>`;
+    } else {
+      const usedPct = s.total ? Math.round(s.used / s.total * 100) : 0;
+      const free = t('space.free', { free: fmtSize(s.free), total: fmtSize(s.total) });
+      body = `
+        <div class="space-head"><span class="space-label">${escHtml(label)}</span><span class="space-free">${escHtml(free)}</span></div>
+        <div class="space-track" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${usedPct}"
+             aria-label="${escHtml(label + ': ' + free)}"><div class="space-fill" style="width:${usedPct}%"></div></div>
+        ${s.low ? `<div class="space-note">⚠ ${escHtml(t('space.low', { gb: data.warning_gb }))}</div>` : ''}`;
+    }
+    if (s.unresponsive || s.missing) {
+      body = `<div class="space-head"><span class="space-label">${escHtml(label)}</span></div>` + body;
+    }
+    const low = s.low || s.unresponsive || s.missing;
+    return `<div class="space-item ${low ? 'low' : ''}" title="${escHtml(s.path)}">${body}</div>`;
+  }).join('');
 }
 
 function fmtEta(secs) {
@@ -2007,6 +2058,7 @@ function fmtTimestamp(iso) {
 (async function init() {
   syncThemeButton();
   loadHistory(true);
+  loadSpace();
   try {
     const s = await api('/api/status');
     if (s.moving) {

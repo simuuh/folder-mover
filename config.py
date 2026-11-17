@@ -41,6 +41,9 @@ DEFAULT_CONFIG = {
     # Mover reports "NAS not responding": scans and moves are refused, a running
     # one is flagged as stalled. A disk spinning up can take ~15 s. 0 = off.
     "nas_timeout": 30,
+    # The storage bar in the UI turns into a warning below this many GB free
+    # on a media folder's filesystem. 0 = no warning.
+    "space_warning_gb": 100,
     # Number of move entries kept in history.jsonl (oldest are dropped). 0 = unlimited.
     "history_max": 10000,
     # Media servers whose library is rescanned after every move with at least
@@ -80,6 +83,7 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_MOUNT_MARKER":  ("mount_marker",),
     "FOLDER_MOVER_NAS_TIMEOUT":   ("nas_timeout",),
     "FOLDER_MOVER_HISTORY_MAX":   ("history_max",),
+    "FOLDER_MOVER_SPACE_WARNING_GB": ("space_warning_gb",),
     "FOLDER_MOVER_JELLYFIN_URL":     ("jellyfin", "url"),
     "FOLDER_MOVER_JELLYFIN_API_KEY": ("jellyfin", "api_key"),
     "FOLDER_MOVER_PLEX_URL":         ("plex", "url"),
@@ -93,7 +97,7 @@ ENV_OVERRIDES = {
 }
 
 
-INT_KEYS = {"port", "session_days", "proxy_count", "nas_timeout", "history_max"}
+INT_KEYS = {"port", "session_days", "proxy_count", "nas_timeout", "history_max", "space_warning_gb"}
 
 
 def load_config(path: str | None = None) -> dict:

@@ -83,7 +83,7 @@ worden (siehe Git-Historie) — beim Ändern von `scanner.py` immer gegen den ta
 | `mover.py` | Tatsächliches Kopieren mit Fortschritt/Speed/ETA, Cleanup nach dem Move |
 | `history.py` | Append-only JSONL-Log für abgeschlossene Moves |
 | `mediaserver.py` | Jellyfin/Plex-Bibliotheks-Refresh nach Moves (Hintergrund-Thread, urllib, nur Log bei Fehlern) |
-| `nas.py` | Schutz vor hängenden NAS-Mounts: Vorab-Probe mit Timeout, Stillstands-Wächter |
+| `nas.py` | Schutz vor hängenden NAS-Mounts: Vorab-Probe mit Timeout, Stillstands-Wächter; `disk_space()` für die Speicheranzeige (`/api/space`) |
 | `config.py` | Lädt `config.yaml`, merged mit `DEFAULT_CONFIG` (flaches Deep-Merge auf Top-Level-Keys); `video_extensions()`-Helper |
 | `gunicorn.conf.py` | Produktions-Server-Settings (liest host/port aus der Config) |
 | `templates/index.html` | Frontend (HTML+CSS+JS in einer Datei), kein Framework, kein Build |
