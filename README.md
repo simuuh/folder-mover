@@ -195,6 +195,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `wrapper_patterns` | `[]` | Extra regexes for container folders that are never a release |
 | `junk_patterns` | `*.url *.lnk rushchk.log …` | Glob patterns for junk files/folders in movie releases (hoster shortcuts, checker logs, …): not copied, deleted with the download. Replaces the defaults — see `config.yaml.example` |
 | `mount_marker` | – | File/folder that must exist in `movies_dir` **and** `series_dir` before anything is moved (e.g. `.folder-mover`) — protects against filling the empty mountpoint of an unmounted share |
+| `nas_timeout` | `30` | Seconds without an answer from a folder before Folder Mover reports "NAS not responding": scans/moves are refused, a running one is flagged as stalled (and logged). `0` = off |
 
 **Environment variables** override `config.yaml`:
 
@@ -203,7 +204,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `FOLDER_MOVER_DOWNLOAD_DIR` / `_MOVIES_DIR` / `_SERIES_DIR` | the three directories |
 | `FOLDER_MOVER_USERNAME` / `_PASSWORD` / `_PASSWORD_HASH` | `auth.*` |
 | `FOLDER_MOVER_SECRET_KEY`, `FOLDER_MOVER_HOST`, `FOLDER_MOVER_PORT` | the matching keys |
-| `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER` | the matching keys |
+| `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER`, `FOLDER_MOVER_NAS_TIMEOUT` | the matching keys |
 | `FOLDER_MOVER_SESSION_DAYS`, `FOLDER_MOVER_PROXY_COUNT` | the matching keys |
 | `FOLDER_MOVER_CONFIG` | path of the config file |
 | `FOLDER_MOVER_HISTORY` | path of `history.jsonl` (the session secret is stored next to it) |

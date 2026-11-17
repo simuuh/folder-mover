@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from config import PARTIAL_SUFFIX, is_junk, missing_mount_markers
+from nas import StallWatch, nas_timeout, unresponsive_dirs
 from scanner import RE_SEASON_EP, RE_SxE, find_videos
 
 log = logging.getLogger(__name__)
@@ -116,8 +117,18 @@ def execute_moves(
     `on_done(results)` runs BEFORE the progress state switches to finished, so
     anything the client reloads on "finished" (results, history) already exists.
     """
+    def on_stall(seconds: int):
+        # Shown in the UI as "NAS not responding for X s"; speed is meaningless then
+        _set(stalled_seconds=seconds, **({"speed_bps": 0, "eta_seconds": None} if seconds else {}))
+
+    with StallWatch("Move", nas_timeout(config), on_stall) as watch:
+        return _execute_moves(moves, config, on_done, watch)
+
+
+def _execute_moves(moves: list[dict], config: dict, on_done, watch: StallWatch) -> list[dict]:
     total_bytes = sum(_calc_size(m, config) for m in moves)
     copied_bytes = 0
+    watch.touch()
 
     _set(
         active=True,
@@ -132,6 +143,7 @@ def execute_moves(
         speed_bps=0,
         eta_seconds=None,
         errors=[],
+        stalled_seconds=0,
         finished=False,
     )
 
@@ -141,10 +153,12 @@ def execute_moves(
     for idx, move in enumerate(moves):
         release_name = Path(move["source_release"]).name
         _set(current_item=release_name, done_items=idx)
+        watch.touch()
 
         try:
             def on_chunk(fname: str, item_copied: int, item_total: int, chunk: int):
                 nonlocal copied_bytes
+                watch.touch()
                 copied_bytes += chunk
                 speed = tracker.speed(copied_bytes)
                 eta = ((total_bytes - copied_bytes) / speed) if speed > 0 else None
@@ -203,7 +217,11 @@ def _do_move(move: dict, config: dict, on_chunk: Callable) -> dict:
 
     if not source_release.exists():
         return _fail(source_release, _err("mover.source_missing", "Source no longer exists"))
-    # Re-checked per item: a share can drop out during a long batch
+    # Re-checked per item: a share can drop out (or hang) during a long batch
+    stuck = unresponsive_dirs(config)
+    if stuck:
+        return _fail(source_release, _err("mover.nas_unresponsive", f"NAS not responding: {stuck[0]}",
+                                          path=stuck[0], seconds=int(nas_timeout(config))))
     unmounted = missing_mount_markers(config)
     if unmounted:
         return _fail(source_release, _err("mover.marker_missing", f"Mount marker missing in {unmounted[0]}",

@@ -21,6 +21,7 @@ import history as hist
 import i18n
 from config import DEFAULT_PASSWORD, check_config, dir_overlaps, library_warnings, load_config, missing_mount_markers
 from mover import execute_moves, get_progress, mark_failed, mark_pending
+from nas import StallWatch, nas_timeout, unresponsive_dirs
 from scanner import scan_downloads
 
 __version__ = "1.5.1"
@@ -366,17 +367,31 @@ def api_scan():
         _scan_running = True
         _scan_progress.clear()
         _scan_progress.update({"phase": "init", "current": "", "found": 0, "done": False,
-                               "error": None, "error_i18n": None})
+                               "error": None, "error_i18n": None, "stalled_seconds": 0})
         _scan_results.clear()
+
+    def on_stall(seconds: int):
+        with _scan_lock:
+            _scan_progress["stalled_seconds"] = seconds
 
     def run():
         global _scan_running
         try:
-            def on_progress(state):
+            stuck = unresponsive_dirs(config)
+            if stuck:
                 with _scan_lock:
-                    _scan_progress.update(state)
+                    _scan_progress.update({"phase": "error", "error": f"NAS not responding: {stuck[0]}", "done": True,
+                                           "error_i18n": [{"key": "scan.nas_unresponsive", "args": {
+                                               "path": stuck[0], "seconds": int(nas_timeout(config))}}]})
+                return
 
-            results = scan_downloads(config, on_progress=on_progress)
+            with StallWatch("Scan", nas_timeout(config), on_stall) as watch:
+                def on_progress(state):
+                    watch.touch()
+                    with _scan_lock:
+                        _scan_progress.update(state)
+
+                results = scan_downloads(config, on_progress=on_progress)
             with _scan_lock:
                 _scan_results.extend(results)
                 _scan_progress.update({"phase": "done", "found": len(results), "done": True,
@@ -445,6 +460,10 @@ def api_move():
             log.warning("Refused move %r: %s", move, err)
             return api_error(err, 403)
 
+    # Before the marker check: on a hanging mount that one would block forever
+    stuck = unresponsive_dirs(config)
+    if stuck:
+        return api_error("api.nas_unresponsive", 503, path=stuck[0], seconds=int(nas_timeout(config)))
     unmounted = missing_mount_markers(config)
     if unmounted:
         log.error("Refused move: mount marker %r missing in %s", config["mount_marker"], unmounted)
