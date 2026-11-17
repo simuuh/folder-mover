@@ -22,7 +22,7 @@ import i18n
 import mediaserver
 from config import DEFAULT_PASSWORD, check_config, dir_overlaps, library_warnings, load_config, missing_mount_markers
 from mover import execute_moves, get_progress, mark_failed, mark_pending, request_cancel
-from nas import StallWatch, nas_timeout, unresponsive_dirs
+from nas import StallWatch, disk_space, nas_timeout, unresponsive_dirs
 from scanner import scan_downloads
 
 __version__ = "1.5.1"
@@ -626,6 +626,12 @@ def api_history():
     entries, matched = hist.query(search, type_filter, offset, limit)
     return jsonify({"ok": True, "entries": entries, "matched": matched, "offset": offset,
                     "total": hist.count()})
+
+
+@app.route("/api/space")
+@require_auth
+def api_space():
+    return jsonify({"ok": True, "targets": disk_space(config), "warning_gb": config.get("space_warning_gb", 0)})
 
 
 @app.route("/api/history/stats")

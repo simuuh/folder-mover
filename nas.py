@@ -16,11 +16,12 @@ A thread blocked on a dead mount stays blocked until the mount comes back
 
 import logging
 import os
+import shutil
 import threading
 import time
 from collections.abc import Callable, Iterable
 
-from config import DIR_KEYS
+from config import DIR_KEYS, MEDIA_KEYS
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,41 @@ def unresponsive_dirs(config: dict, keys: Iterable[str] = DIR_KEYS) -> list[str]
     if stuck:
         log.error("NAS not responding: no answer from %s within %ss", ", ".join(stuck), timeout)
     return stuck
+
+
+def disk_space(config: dict) -> list[dict]:
+    """
+    Free/total space of the media folders for the UI. Folders on the same
+    filesystem are merged into one entry (`keys` lists both). `low` is set
+    below `space_warning_gb`. Probed first, so a hanging mount answers with
+    `unresponsive` instead of blocking the request.
+    """
+    try:
+        warn_bytes = max(0.0, float(config.get("space_warning_gb") or 0)) * 1024 ** 3
+    except (TypeError, ValueError):
+        warn_bytes = 0.0
+    stuck = set(unresponsive_dirs(config, MEDIA_KEYS))
+    entries: list[dict] = []
+    by_device: dict[int, dict] = {}
+    for key in MEDIA_KEYS:
+        path = config[key]
+        if path in stuck:
+            entries.append({"keys": [key], "path": path, "unresponsive": True})
+            continue
+        try:
+            device = os.stat(path).st_dev
+            usage = shutil.disk_usage(path)
+        except OSError:
+            entries.append({"keys": [key], "path": path, "missing": True})
+            continue
+        if device in by_device:
+            by_device[device]["keys"].append(key)
+            continue
+        entry = {"keys": [key], "path": path, "total": usage.total, "used": usage.used, "free": usage.free,
+                 "low": bool(warn_bytes) and usage.free < warn_bytes}
+        by_device[device] = entry
+        entries.append(entry)
+    return entries
 
 
 class StallWatch:

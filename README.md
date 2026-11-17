@@ -42,6 +42,7 @@ moves everything into place after **you** confirmed it. With a live progress bar
 | 📈 **Live progress** | Chunked copy with speed, ETA and per-file progress via Server-Sent Events; reconnects after a page reload; a running move can be cancelled (the unfinished copy is rolled back) |
 | 🛡️ **Safe by default** | Nothing moves without confirmation; free-space check; copies get their final name only when complete (`.fmpart` until then); optional mount marker against unmounted shares; all paths validated server-side |
 | 📺 **Jellyfin & Plex** | Optional library rescan after every move, so new releases show up right away |
+| 💾 **Storage at a glance** | Free space of the movie/series shares above the downloads, with a warning when it runs low |
 | 🗂️ **History** | Searchable log of every move (server-side search over the whole history), filterable by type and errors, with stats and GB moved per month |
 | 🌗 **Dark & light** | Follows your OS theme, switchable in the header |
 
@@ -197,6 +198,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `junk_patterns` | `*.url *.lnk rushchk.log …` | Glob patterns for junk files/folders in movie releases (hoster shortcuts, checker logs, …): not copied, deleted with the download. Replaces the defaults — see `config.yaml.example` |
 | `mount_marker` | – | File/folder that must exist in `movies_dir` **and** `series_dir` before anything is moved (e.g. `.folder-mover`) — protects against filling the empty mountpoint of an unmounted share |
 | `nas_timeout` | `30` | Seconds without an answer from a folder before Folder Mover reports "NAS not responding": scans/moves are refused, a running one is flagged as stalled (and logged). `0` = off |
+| `space_warning_gb` | `100` | The storage bar above the downloads turns into a warning below this many GB free; `0` = no warning |
 | `history_max` | `10000` | Number of moves kept in the history (oldest are dropped); `0` = unlimited. Search and filters always cover the whole history |
 | `jellyfin.url` / `jellyfin.api_key` | – | Jellyfin rescans its library after every move with at least one success (API key: Dashboard → API Keys) |
 | `plex.url` / `plex.token` | – | Same for Plex (`X-Plex-Token`). Test the setup with `python app.py --refresh-library` |
@@ -208,7 +210,7 @@ All keys are optional; defaults live in [`config.py`](config.py).
 | `FOLDER_MOVER_DOWNLOAD_DIR` / `_MOVIES_DIR` / `_SERIES_DIR` | the three directories |
 | `FOLDER_MOVER_USERNAME` / `_PASSWORD` / `_PASSWORD_HASH` | `auth.*` |
 | `FOLDER_MOVER_SECRET_KEY`, `FOLDER_MOVER_HOST`, `FOLDER_MOVER_PORT` | the matching keys |
-| `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER`, `FOLDER_MOVER_NAS_TIMEOUT`, `FOLDER_MOVER_HISTORY_MAX` | the matching keys |
+| `FOLDER_MOVER_LANGUAGE`, `FOLDER_MOVER_MOUNT_MARKER`, `FOLDER_MOVER_NAS_TIMEOUT`, `FOLDER_MOVER_HISTORY_MAX`, `FOLDER_MOVER_SPACE_WARNING_GB` | the matching keys |
 | `FOLDER_MOVER_JELLYFIN_URL` / `_JELLYFIN_API_KEY`, `FOLDER_MOVER_PLEX_URL` / `_PLEX_TOKEN` | `jellyfin.*` / `plex.*` |
 | `FOLDER_MOVER_SESSION_DAYS`, `FOLDER_MOVER_PROXY_COUNT` | the matching keys |
 | `FOLDER_MOVER_CONFIG` | path of the config file |

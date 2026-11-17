@@ -18,6 +18,9 @@ mount_marker: ""
 # spins up can take ~15 s, so don't go too low. 0 = off.
 nas_timeout: 30
 
+# Warn in the UI when a media folder has less than this many GB free. 0 = off.
+space_warning_gb: 100
+
 # Number of moves kept in the history (oldest are dropped). 0 = unlimited.
 history_max: 10000
 

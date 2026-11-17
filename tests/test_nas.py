@@ -3,6 +3,7 @@
 import json
 import threading
 import time
+from collections import namedtuple
 
 import pytest
 from conftest import make_files
@@ -114,3 +115,27 @@ def test_stalled_copy_is_flagged_in_progress(config, dirs, monkeypatch):
     assert result["ok"]
     assert seen[0]["stalled_seconds"] >= 1 and seen[0]["speed_bps"] == 0
     assert mover.get_progress()["stalled_seconds"] == 0
+
+
+def test_disk_space_merges_same_filesystem(config, monkeypatch):
+    monkeypatch.setattr(nas, "_probes", {})
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(nas.shutil, "disk_usage", lambda p: usage(1000 * 1024**3, 950 * 1024**3, 50 * 1024**3))
+
+    targets = nas.disk_space({**config, "space_warning_gb": 100, "nas_timeout": 5})
+
+    assert len(targets) == 1 and targets[0]["keys"] == ["movies_dir", "series_dir"]   # tmp_path: one device
+    assert targets[0]["free"] == 50 * 1024**3 and targets[0]["low"]
+    assert not nas.disk_space({**config, "space_warning_gb": 0})[0]["low"]
+
+
+def test_disk_space_reports_missing_and_hanging(config, dirs, hanging_series_dir):
+    dirs["movies_dir"].rmdir()
+    targets = {t["keys"][0]: t for t in nas.disk_space({**config, "nas_timeout": 0.2})}
+    assert targets["movies_dir"]["missing"]
+    assert targets["series_dir"]["unresponsive"]
+
+
+def test_space_api(auth_client):  # noqa: F811
+    data = auth_client.get("/api/space").get_json()
+    assert data["ok"] and data["targets"][0]["total"] > 0
