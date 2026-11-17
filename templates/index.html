@@ -468,6 +468,7 @@
   .prog-current-file { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prog-current-item { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .prog-errors { font-size: 12px; color: var(--red); font-family: var(--mono); max-height: 80px; overflow-y: auto; white-space: pre-line; }
+  .prog-stalled { font-size: 12px; color: var(--orange); }
   #prog-close-btn { width: 100%; justify-content: center; margin-top: 4px; }
 
   /* ── Select all ── */
@@ -494,6 +495,8 @@
   .scan-status-panel.scan-done { opacity: 0; }
   .scan-status-panel.scan-ok { border-color: var(--green); }
   .scan-status-panel.scan-ok .scan-pulse { background: var(--green); }
+  .scan-status-panel.scan-stalled { border-color: var(--orange); }
+  .scan-status-panel.scan-stalled .scan-status-current { color: var(--orange); }
 
   .scan-status-icon {
     position: relative;
@@ -867,6 +870,7 @@
       </div>
     </div>
 
+    <div class="prog-stalled" id="prog-stalled" role="status" hidden></div>
     <div class="prog-errors" id="prog-errors" hidden></div>
 
     <button class="btn btn-primary" id="prog-close-btn" onclick="closeProgressOverlay()" hidden>
@@ -1073,7 +1077,7 @@ function showScanStatus() {
   document.getElementById('scan-current').textContent = '';
   document.getElementById('scan-counter').textContent = '';
   el.hidden = false;
-  el.classList.remove('scan-done', 'scan-ok');
+  el.classList.remove('scan-done', 'scan-ok', 'scan-stalled');
 }
 
 function hideScanStatus() {
@@ -1095,8 +1099,12 @@ const SCAN_PHASES = {
 function updateScanStatus(p) {
   if (SCAN_PHASES[p.phase]) document.getElementById('scan-phase').textContent = SCAN_PHASES[p.phase];
   // `current` is a file name; status messages arrive as i18n keys
-  document.getElementById('scan-current').textContent =
-    p.current_key ? t(p.current_key, p.current_args || {}) : (p.current || '');
+  // A hanging NAS mount: say so instead of showing the last file forever
+  const stalled = p.stalled_seconds > 0;
+  document.getElementById('scan-status-panel')?.classList.toggle('scan-stalled', stalled);
+  document.getElementById('scan-current').textContent = stalled
+    ? t('scan.stalled', { seconds: p.stalled_seconds })
+    : (p.current_key ? t(p.current_key, p.current_args || {}) : (p.current || ''));
 
   const counter = document.getElementById('scan-counter');
   if (p.found > 0) {
@@ -1650,6 +1658,10 @@ function updateProgressUI(p) {
   if (p.finished) eta.textContent = t('progress.finished');
   else if (p.eta_seconds > 0) eta.textContent = fmtEta(p.eta_seconds);
   else eta.textContent = '—';
+
+  const stalled = document.getElementById('prog-stalled');
+  stalled.hidden = !(p.stalled_seconds > 0) || !!p.finished;
+  if (!stalled.hidden) stalled.textContent = t('progress.stalled', { seconds: p.stalled_seconds });
 
   if (p.errors && p.errors.length > 0) {
     const el = document.getElementById('prog-errors');

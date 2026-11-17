@@ -27,6 +27,8 @@
   "scan.marker_missing": "Markierungsdatei {marker} fehlt in {path} – ist das NAS gemountet? Verschieben ist gesperrt.",
   "scan.library_missing": "Medienordner fehlt: {path} – ist das NAS gemountet?",
   "scan.library_empty": "Medienordner ist leer: {path} – ist das NAS gemountet?",
+  "scan.nas_unresponsive": "NAS antwortet nicht: {path} (keine Antwort innerhalb von {seconds} s) – hängt der Mount?",
+  "scan.stalled": "Seit {seconds} s keine Rückmeldung vom NAS – hängt der Mount?",
 
   "toolbar.select_all": "Alle wählen",
   "toolbar.select_none": "Keine",
@@ -121,6 +123,7 @@
   "progress.done": "Abgeschlossen",
   "progress.finished": "Fertig",
   "progress.connection_lost": "Verbindung zum Server verloren — Seite neu laden, um den Fortschritt wieder anzuzeigen",
+  "progress.stalled": "Seit {seconds} s keine Rückmeldung vom NAS – hängt der Mount? Es geht weiter, sobald das NAS wieder antwortet.",
 
   "history.filter_all": "Alle",
   "history.filter_movies": "🎬 Filme",
@@ -166,6 +169,7 @@
   "api.invalid_replace": "Ungültiges zu ersetzendes Release",
   "api.dirs_overlap": "Konfiguration unsicher: {a} und {b} überschneiden sich. Scan, Verschieben und Löschen sind gesperrt, bis die Pfade getrennt sind.",
   "api.marker_missing": "Markierungsdatei {marker} fehlt in {path} – NAS nicht gemountet? Nichts verschoben.",
+  "api.nas_unresponsive": "NAS antwortet nicht: {path} (keine Antwort innerhalb von {seconds} s). Nichts verschoben.",
 
   "mover.source_missing": "Quelle existiert nicht mehr",
   "mover.file_not_found": "Datei nicht gefunden: {name}",
@@ -178,5 +182,6 @@
   "mover.copy_failed": "Kopieren fehlgeschlagen: {name} ({error})",
   "mover.unexpected": "Unerwarteter Fehler: {error}",
   "mover.replace_failed": "Altes Release konnte nicht gelöscht werden: {path} ({error})",
-  "mover.marker_missing": "Markierungsdatei {marker} fehlt in {path} – NAS nicht gemountet? Nichts verschoben."
+  "mover.marker_missing": "Markierungsdatei {marker} fehlt in {path} – NAS nicht gemountet? Nichts verschoben.",
+  "mover.nas_unresponsive": "NAS antwortet nicht: {path} (keine Antwort innerhalb von {seconds} s). Nichts verschoben."
 }

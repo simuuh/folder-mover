@@ -78,6 +78,7 @@ worden (siehe Git-Historie) — beim Ändern von `scanner.py` immer gegen den ta
 | `scanner.py` | Klassifikation, Wrapper-Erkennung, Fuzzy-Matching gegen NAS-Bibliothek, Scan-Resultate |
 | `mover.py` | Tatsächliches Kopieren mit Fortschritt/Speed/ETA, Cleanup nach dem Move |
 | `history.py` | Append-only JSONL-Log für abgeschlossene Moves |
+| `nas.py` | Schutz vor hängenden NAS-Mounts: Vorab-Probe mit Timeout, Stillstands-Wächter |
 | `config.py` | Lädt `config.yaml`, merged mit `DEFAULT_CONFIG` (flaches Deep-Merge auf Top-Level-Keys); `video_extensions()`-Helper |
 | `gunicorn.conf.py` | Produktions-Server-Settings (liest host/port aus der Config) |
 | `templates/index.html` | Frontend (HTML+CSS+JS in einer Datei), kein Framework, kein Build |
@@ -116,8 +117,15 @@ Alle Filesystem-Operationen sind synchron und laufen über Netzwerk-Mounts
   als Warnung (`config.library_warnings()`); mit `mount_marker` werden Moves dann
   verweigert.
 
-**Offen:** Kein Timeout um NAS-Zugriffe — ein hängender Mount zeigt sich als
-endlos laufender Scan/Move ohne Log-Zeile.
+- Hängende Mounts (`nas.py`, Config `nas_timeout`, Default 30 s, 0 = aus): Python
+  kann einen blockierten Syscall nicht abbrechen. Deshalb prüft
+  `unresponsive_dirs()` die drei Ordner vorab in einem Hilfsthread mit Timeout
+  (vor dem Scan im Scan-Thread, vor dem Move in `/api/move` und erneut pro
+  Move-Eintrag) und verwendet einen noch hängenden Probe-Thread wieder, statt
+  neue anzuhäufen. `StallWatch` meldet laufende Scans/Moves ohne Fortschritt
+  einmalig im Log und als `stalled_seconds` im Progress-Event. Ein Thread, der
+  bereits auf dem toten Mount hängt, bleibt hängen, bis der Mount zurück ist
+  oder der Service neu startet.
 
 ## i18n (DE/EN)
 

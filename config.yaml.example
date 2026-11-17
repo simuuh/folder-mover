@@ -12,6 +12,12 @@ series_dir: /mnt/Serien
 # silently fill the local disk. Empty = off.
 mount_marker: ""
 
+# A hanging SMB/NFS mount blocks every file access without an error. If a
+# folder does not answer within this many seconds, scans and moves are refused
+# ("NAS not responding"), and a running one is flagged as stalled. A disk that
+# spins up can take ~15 s, so don't go too low. 0 = off.
+nas_timeout: 30
+
 # ── Web Server ─────────────────────────────────────────────────────────────────
 host: 0.0.0.0
 port: 8080

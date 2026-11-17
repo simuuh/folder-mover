@@ -37,6 +37,10 @@ DEFAULT_CONFIG = {
     # anything is moved (e.g. ".folder-mover"). Protects against writing into
     # the empty mountpoint of an NAS share that is not mounted. Empty = off.
     "mount_marker": "",
+    # Seconds without an answer from the download/media folders before Folder
+    # Mover reports "NAS not responding": scans and moves are refused, a running
+    # one is flagged as stalled. A disk spinning up can take ~15 s. 0 = off.
+    "nas_timeout": 30,
     # Additional regexes for folder names that are pure wrappers (not the real
     # release). UUID folders are always treated as wrappers.
     "wrapper_patterns": [],
@@ -67,6 +71,7 @@ ENV_OVERRIDES = {
     "FOLDER_MOVER_PORT":          ("port",),
     "FOLDER_MOVER_LANGUAGE":      ("language",),
     "FOLDER_MOVER_MOUNT_MARKER":  ("mount_marker",),
+    "FOLDER_MOVER_NAS_TIMEOUT":   ("nas_timeout",),
     "FOLDER_MOVER_SECRET_KEY":    ("secret_key",),
     "FOLDER_MOVER_SESSION_DAYS":  ("session_days",),
     "FOLDER_MOVER_PROXY_COUNT":   ("proxy_count",),
@@ -76,7 +81,7 @@ ENV_OVERRIDES = {
 }
 
 
-INT_KEYS = {"port", "session_days", "proxy_count"}
+INT_KEYS = {"port", "session_days", "proxy_count", "nas_timeout"}
 
 
 def load_config(path: str | None = None) -> dict:
