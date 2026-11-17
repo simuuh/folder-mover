@@ -483,7 +483,7 @@ def api_move():
         # Runs before the progress state reports "finished" (see execute_moves)
         with _move_lock:
             _move_results.extend(results)
-        hist.append(moves, results)
+        hist.append(moves, results, max_entries=config.get("history_max", hist.MAX_ENTRIES))
         if any(r.get("ok") for r in results):
             mediaserver.refresh_in_background(config)   # Jellyfin/Plex; best effort, never blocks
 
@@ -615,9 +615,17 @@ def api_delete():
 @app.route("/api/history")
 @require_auth
 def api_history():
-    limit = request.args.get("limit", 200, type=int)
-    limit = max(1, min(limit, 500))
-    return jsonify({"ok": True, "entries": hist.read(limit), "total": hist.count()})
+    # Search/filter/paging run here over the whole file, not in the browser —
+    # otherwise only the page that was loaded would be searchable
+    limit = max(1, min(request.args.get("limit", 100, type=int), 500))
+    offset = max(0, request.args.get("offset", 0, type=int))
+    type_filter = request.args.get("filter", "all")
+    if type_filter not in hist.FILTERS:
+        type_filter = "all"
+    search = request.args.get("q", "")[:200]
+    entries, matched = hist.query(search, type_filter, offset, limit)
+    return jsonify({"ok": True, "entries": entries, "matched": matched, "offset": offset,
+                    "total": hist.count()})
 
 
 def main():

@@ -616,6 +616,8 @@
     max-width: 300px;
   }
   .hist-refresh { margin-left: auto; }
+  .hist-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+  .hist-count { font-size: 12px; color: var(--muted); }
 
   .hist-table-wrap {
     overflow-x: auto;
@@ -766,7 +768,7 @@
         <button class="hist-filter-btn" onclick="setHistFilter('series', this)">{{ t('history.filter_series') }}</button>
         <button class="hist-filter-btn" onclick="setHistFilter('error', this)">{{ t('history.filter_errors') }}</button>
       </div>
-      <input type="text" class="hist-search" placeholder="{{ t('history.search') }}" oninput="renderHistory()" id="hist-search" aria-label="{{ t('history.search_label') }}">
+      <input type="text" class="hist-search" placeholder="{{ t('history.search') }}" oninput="searchHistory()" id="hist-search" aria-label="{{ t('history.search_label') }}">
       <button class="btn btn-sm hist-refresh" onclick="loadHistory()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
         {{ t('history.refresh') }}
@@ -788,6 +790,10 @@
           <tr><td colspan="6" class="hist-empty">{{ t('history.none_yet') }}</td></tr>
         </tbody>
       </table>
+    </div>
+    <div class="hist-footer">
+      <span class="hist-count" id="hist-count"></span>
+      <button class="btn btn-sm" id="hist-more-btn" onclick="loadHistory(false, true)" hidden>{{ t('history.load_more') }}</button>
     </div>
   </div>
 </main>
@@ -1795,45 +1801,59 @@ function switchTab(tab) {
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
+// Search, filter and paging run on the server over the whole history
+const HIST_PAGE = 100;
 let _histEntries = [];
 let _histFilter  = 'all';
+let _histMatched = 0;
+let _histTotal   = 0;
+let _histRequest = 0;       // drops answers of outdated requests (fast typing)
+let _histSearchTimer = null;
 
-async function loadHistory(silent = false) {
+async function loadHistory(silent = false, more = false) {
+  const request = ++_histRequest;
+  const params = new URLSearchParams({
+    q: document.getElementById('hist-search').value || '',
+    filter: _histFilter,
+    offset: more ? _histEntries.length : 0,
+    limit: HIST_PAGE,
+  });
   try {
-    const data = await api('/api/history?limit=200');
-    _histEntries = data.entries;
-    document.getElementById('tab-badge-history').textContent = data.total ?? _histEntries.length;
+    const data = await api('/api/history?' + params);
+    if (request !== _histRequest) return;
+    _histEntries = more ? _histEntries.concat(data.entries) : data.entries;
+    _histMatched = data.matched ?? _histEntries.length;
+    _histTotal   = data.total ?? _histEntries.length;
+    document.getElementById('tab-badge-history').textContent = _histTotal;
     renderHistory();
   } catch (e) {
     if (!silent) toast(t('history.load_failed', { error: e.message }), 'error');
   }
 }
 
+function searchHistory() {
+  clearTimeout(_histSearchTimer);
+  _histSearchTimer = setTimeout(() => loadHistory(), 250);
+}
+
 function setHistFilter(filter, btn) {
   _histFilter = filter;
   document.querySelectorAll('.hist-filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  renderHistory();
+  loadHistory();
 }
 
 function renderHistory() {
-  const search = (document.getElementById('hist-search').value || '').toLowerCase();
-  const tbody  = document.getElementById('hist-tbody');
+  const tbody   = document.getElementById('hist-tbody');
+  const entries = _histEntries;
 
-  let entries = _histEntries;
-  if (_histFilter === 'movie')  entries = entries.filter(e => e.type === 'movie');
-  if (_histFilter === 'series') entries = entries.filter(e => e.type === 'series');
-  if (_histFilter === 'error')  entries = entries.filter(e => !e.ok);
-
-  if (search) {
-    entries = entries.filter(e =>
-      (e.release_name || '').toLowerCase().includes(search) ||
-      (e.dest || '').toLowerCase().includes(search)
-    );
-  }
+  document.getElementById('hist-more-btn').hidden = entries.length >= _histMatched;
+  document.getElementById('hist-count').textContent =
+    _histMatched ? t('history.shown', { shown: entries.length, count: _histMatched }) : '';
 
   if (entries.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="hist-empty">${escHtml(t('history.none_found'))}</td></tr>`;
+    const key = _histTotal ? 'history.none_found' : 'history.none_yet';
+    tbody.innerHTML = `<tr><td colspan="6" class="hist-empty">${escHtml(t(key))}</td></tr>`;
     return;
   }
 

@@ -58,7 +58,8 @@ app.py validiert JEDEN Move serverseitig (_validate_move, inkl. replaced_path) u
 GET /api/progress (Server-Sent Events, Poll alle 0.25s) → Live-Fortschrittsbalken
    │
    ▼
-history.py: append() schreibt Ergebnis nach history.jsonl (max. 500 Zeilen, älteste werden getrimmt)
+history.py: append() schreibt Ergebnis nach history.jsonl (Config history_max, Default 10 000, 0 = unbegrenzt;
+                älteste werden getrimmt). /api/history sucht/filtert/paginiert serverseitig (history.query)
 ```
 
 **Wichtig:** `/api/scan` ist **asynchron** — der POST-Request startet nur einen Thread und
